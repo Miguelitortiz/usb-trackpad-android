@@ -3,6 +3,7 @@ package com.usbtrackpad.app;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -13,9 +14,9 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
-import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.Spinner;
@@ -29,11 +30,11 @@ import java.util.Locale;
 
 /**
  * Actividad principal del emulador de Trackpad USB HID para Android.
- * Soporta salida por USB a cualquier dispositivo receptor mediante:
- * 1) Modo USB ADB / Socket Local con auto-reconexión persistente (por defecto para teléfonos sin Root).
- * 2) Modo USB HID Gadget Nativo (/dev/hidg0 ConfigFS - Plug & Play real para teléfonos con Root).
- * 3) Modo USB Host / OTG HID Bridge (CH9329 / HID Host sin Root).
- * 4) Modo Bluetooth HID Nativo (API oficial de Android sin Root).
+ * Diseño estilo cristal pulido reactivo (Apple Glassmorphism):
+ * - Área táctil completa sin bordes ni saturación de texto innecesario.
+ * - Botón pequeño para abrir configuraciones en ventana modal de cristal esmerilado.
+ * - Giro manual independiente del sensor del sistema (0°, 90°, 180°, 270°).
+ * - Disposición intuitiva con mínima cantidad de letras.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -45,6 +46,14 @@ public class MainActivity extends AppCompatActivity {
     private static final String PREFS_NAME = "usb_trackpad_prefs";
     private static final String KEY_MODE = "saved_mode";
     private static final String KEY_HOST = "saved_host";
+    private static final String KEY_ROTATION = "saved_manual_rotation";
+
+    private static final int[] ROTATION_MODES = new int[]{
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,           // 0°
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,          // 90°
+            ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT,   // 180°
+            ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE   // 270°
+    };
 
     private UsbGadgetHidManager usbGadgetManager;
     private UsbHostHidBridgeManager usbHostManager;
@@ -56,11 +65,14 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvSensitivityLabel;
     private TextView tvScrollLabel;
     private EditText etHostAddress;
-    private LinearLayout panelSettings;
+    private View scrimSettings;
+    private View panelSettingsCard;
     private LinearLayout rowTcpHost;
-    private Button btnDragLock;
+    private ImageButton btnDragLock;
+    private ImageButton btnRotate;
 
     private int activeMode = MODE_USB_ADB_SOCKET;
+    private int currentRotationIndex = 0;
     private int currentButtonMask = 0;
     private boolean dragLockEnabled = false;
     private long packetsSent = 0;
@@ -70,6 +82,14 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // Restaurar orientación manual guardada antes de inflar vistas
+        SharedPreferences sp = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        currentRotationIndex = sp.getInt(KEY_ROTATION, 0);
+        if (currentRotationIndex > 0 && currentRotationIndex < ROTATION_MODES.length) {
+            setRequestedOrientation(ROTATION_MODES[currentRotationIndex]);
+        }
+
         setContentView(R.layout.activity_main);
 
         usbGadgetManager = new UsbGadgetHidManager();
@@ -84,7 +104,6 @@ public class MainActivity extends AppCompatActivity {
     private void determineDefaultMode() {
         SharedPreferences sp = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         boolean hasRootHid = new File("/dev/hidg0").exists();
-        // Si ya hay preferencia guardada, usarla; si no, usar USB ADB por defecto si no hay Root
         activeMode = sp.getInt(KEY_MODE, hasRootHid ? MODE_USB_GADGET : MODE_USB_ADB_SOCKET);
     }
 
@@ -96,26 +115,31 @@ public class MainActivity extends AppCompatActivity {
         tvSensitivityLabel = findViewById(R.id.tvSensitivityLabel);
         tvScrollLabel = findViewById(R.id.tvScrollLabel);
         etHostAddress = findViewById(R.id.etHostAddress);
-        panelSettings = findViewById(R.id.panelSettings);
+        scrimSettings = findViewById(R.id.scrimSettings);
+        panelSettingsCard = findViewById(R.id.panelSettingsCard);
         rowTcpHost = findViewById(R.id.rowTcpHost);
         btnDragLock = findViewById(R.id.btnDragLock);
+        btnRotate = findViewById(R.id.btnRotate);
 
         SharedPreferences sp = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         String savedHost = sp.getString(KEY_HOST, "127.0.0.1:5057");
         etHostAddress.setText(savedHost);
 
-        Button btnInitUsb = findViewById(R.id.btnInitUsb);
-        Button btnConnectAdb = findViewById(R.id.btnConnectAdb);
-        Button btnSettings = findViewById(R.id.btnSettings);
-        Button btnDiag = findViewById(R.id.btnDiag);
+        ImageButton btnSettings = findViewById(R.id.btnSettings);
+        ImageButton btnCloseSettings = findViewById(R.id.btnCloseSettings);
+        ImageButton btnInitUsb = findViewById(R.id.btnInitUsb);
+        ImageButton btnConnectAdb = findViewById(R.id.btnConnectAdb);
+        ImageButton btnDiag = findViewById(R.id.btnDiag);
+        View pillStatus = findViewById(R.id.pillStatus);
         Spinner spinnerMode = findViewById(R.id.spinnerMode);
         TrackpadGestureView trackpadView = findViewById(R.id.trackpadView);
 
+        // Opciones del selector de modo
         String[] modes = new String[]{
-                "1. USB ADB / Cable PC (127.0.0.1:5057)",
-                "2. USB HID Gadget (Kernel / Root /dev/hidg0)",
-                "3. USB OTG Bridge (CH9329 / Host)",
-                "4. Bluetooth HID (Inalámbrico sin Root)"
+                "USB ADB (127.0.0.1:5057)",
+                "USB Gadget (/dev/hidg0)",
+                "USB OTG Bridge (CH9329)",
+                "Bluetooth HID (Inalámbrico)"
         };
         ArrayAdapter<String> adapter = new ArrayAdapter<>(
                 this, android.R.layout.simple_spinner_dropdown_item, modes);
@@ -142,34 +166,69 @@ public class MainActivity extends AppCompatActivity {
 
         updateModeUiVisibility();
 
-        btnInitUsb.setOnClickListener(v -> initializeActiveTransport());
+        // Control de Apertura / Cierre modal de Ajustes
+        btnSettings.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            openSettings();
+        });
+
+        btnCloseSettings.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            closeSettings();
+        });
+
+        scrimSettings.setOnClickListener(v -> closeSettings());
+        panelSettingsCard.setOnClickListener(v -> {
+            // Evitar que toques dentro del card cierren el modal
+        });
+
+        // Giro manual independiente de la autorrotación del sistema
+        btnRotate.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            v.animate().rotationBy(90f).setDuration(250).start();
+            cycleManualRotation();
+        });
+
+        // Reconexión y transporte
+        pillStatus.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            initializeActiveTransport();
+        });
+
+        btnInitUsb.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            initializeActiveTransport();
+            closeSettings();
+        });
+
         btnConnectAdb.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             saveHostPreference();
             initializeActiveTransport();
         });
 
-        btnSettings.setOnClickListener(v -> {
-            panelSettings.setVisibility(
-                    panelSettings.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
+        btnDiag.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            showDiagnosticsDialog();
         });
 
-        btnDiag.setOnClickListener(v -> showDiagnosticsDialog());
-
+        // Bloqueo de arrastre (Drag Lock)
         btnDragLock.setOnClickListener(v -> {
             dragLockEnabled = !dragLockEnabled;
             btnDragLock.setSelected(dragLockEnabled);
-            btnDragLock.setText(dragLockEnabled ? R.string.btn_drag_lock_on : R.string.btn_drag_lock);
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             updateButtonBit(HidMouseReport.BTN_LEFT, dragLockEnabled);
             dispatchHidEvent(0, 0, 0, dragLockEnabled ? "DRAG ON" : "DRAG OFF");
         });
 
+        // Sensibilidad del cursor
         SeekBar seekSensitivity = findViewById(R.id.seekSensitivity);
         seekSensitivity.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 float val = Math.max(3, progress) / 10.0f;
                 trackpadView.setSensitivity(val);
-                tvSensitivityLabel.setText(String.format(Locale.US, "Sensibilidad del cursor: %.1fx", val));
+                tvSensitivityLabel.setText(String.format(Locale.US, "%.1fx", val));
             }
 
             @Override
@@ -181,13 +240,14 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // Velocidad de scroll
         SeekBar seekScroll = findViewById(R.id.seekScroll);
         seekScroll.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 float val = Math.max(2, progress) / 10.0f;
                 trackpadView.setScrollSensitivity(val);
-                tvScrollLabel.setText(String.format(Locale.US, "Velocidad de Scroll (2 dedos): %.1fx", val));
+                tvScrollLabel.setText(String.format(Locale.US, "%.1fx", val));
             }
 
             @Override
@@ -205,7 +265,7 @@ public class MainActivity extends AppCompatActivity {
         CheckBox cbTapToClick = findViewById(R.id.cbTapToClick);
         cbTapToClick.setOnCheckedChangeListener((btn, checked) -> trackpadView.setTapToClick(checked));
 
-        // Conectar eventos del área táctil multitouch
+        // Eventos de la superficie táctil multitouch de cristal
         trackpadView.setTrackpadListener(new TrackpadGestureView.TrackpadListener() {
             @Override
             public void onHidAction(int buttonsDeltaOrState, int dx, int dy, int wheel, String gestureLabel) {
@@ -231,10 +291,30 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // Botones físicos en pantalla
+        // Botones físicos estilo cristal pulido con reacción táctil fluida
         setupMouseButton(findViewById(R.id.btnMouseLeft), HidMouseReport.BTN_LEFT, "BTN IZQ");
         setupMouseButton(findViewById(R.id.btnMouseMiddle), HidMouseReport.BTN_MIDDLE, "BTN MED");
         setupMouseButton(findViewById(R.id.btnMouseRight), HidMouseReport.BTN_RIGHT, "BTN DER");
+    }
+
+    private void openSettings() {
+        scrimSettings.setAlpha(0f);
+        scrimSettings.setVisibility(View.VISIBLE);
+        scrimSettings.animate().alpha(1f).setDuration(220).start();
+    }
+
+    private void closeSettings() {
+        scrimSettings.animate().alpha(0f).setDuration(160).withEndAction(() ->
+                scrimSettings.setVisibility(View.GONE)).start();
+    }
+
+    private void cycleManualRotation() {
+        currentRotationIndex = (currentRotationIndex + 1) % ROTATION_MODES.length;
+        setRequestedOrientation(ROTATION_MODES[currentRotationIndex]);
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .edit()
+                .putInt(KEY_ROTATION, currentRotationIndex)
+                .apply();
     }
 
     private void updateModeUiVisibility() {
@@ -251,17 +331,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    private void setupMouseButton(Button button, final int mask, final String label) {
+    private void setupMouseButton(View button, final int mask, final String label) {
         button.setOnTouchListener((v, event) -> {
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_DOWN) {
                 v.setPressed(true);
+                v.animate().scaleX(0.95f).scaleY(0.95f).setDuration(80).start();
                 v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
                 updateButtonBit(mask, true);
                 dispatchHidEvent(0, 0, 0, label + " DOWN");
                 return true;
             } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
                 v.setPressed(false);
+                v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(120).start();
                 if (!(mask == HidMouseReport.BTN_LEFT && dragLockEnabled)) {
                     updateButtonBit(mask, false);
                 }
@@ -282,19 +364,19 @@ public class MainActivity extends AppCompatActivity {
 
     private void initializeActiveTransport() {
         usbHostManager.stopUsbAdbLoop();
-        updateStatusUi(false, "Iniciando modo seleccionado...");
+        updateStatusUi(false, "Conectando...");
 
         if (activeMode == MODE_USB_ADB_SOCKET) {
             saveHostPreference();
             String hostPort = etHostAddress.getText().toString();
             usbHostManager.startUsbAdbLoop(hostPort, (connected, status) ->
-                    mainHandler.post(() -> updateStatusUi(connected, status)));
+                    mainHandler.post(() -> updateStatusUi(connected, connected ? "ADB OK" : "ADB...")));
         } else if (activeMode == MODE_USB_GADGET) {
             usbGadgetManager.initializeAsync((ready, message) ->
-                    mainHandler.post(() -> updateStatusUi(ready, message)));
+                    mainHandler.post(() -> updateStatusUi(ready, ready ? "HID OK" : "HID...")));
         } else if (activeMode == MODE_USB_HOST_BRIDGE) {
             usbHostManager.connectUsbHostBridge((connected, status) ->
-                    mainHandler.post(() -> updateStatusUi(connected, status)));
+                    mainHandler.post(() -> updateStatusUi(connected, connected ? "OTG OK" : "OTG...")));
         } else if (activeMode == MODE_BLUETOOTH_HID) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
@@ -306,7 +388,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
             bluetoothHidManager.initialize((connected, status) ->
-                    mainHandler.post(() -> updateStatusUi(connected, status)));
+                    mainHandler.post(() -> updateStatusUi(connected, connected ? "BT OK" : "BT...")));
         }
     }
 
@@ -333,13 +415,11 @@ public class MainActivity extends AppCompatActivity {
 
         tvTelemetry.setText(String.format(
                 Locale.US,
-                "%s | HID [%02X | X:%+4d Y:%+4d W:%+2d] #%d",
-                label,
+                "HID [%02X | X:%+3d Y:%+3d W:%+1d]",
                 report[0] & 0xFF,
                 report[1],
                 report[2],
-                report[3],
-                packetsSent
+                report[3]
         ));
     }
 

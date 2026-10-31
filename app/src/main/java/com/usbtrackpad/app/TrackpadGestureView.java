@@ -2,7 +2,10 @@ package com.usbtrackpad.app;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.RadialGradient;
+import android.graphics.Shader;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.AttributeSet;
@@ -11,12 +14,10 @@ import android.view.MotionEvent;
 import android.view.View;
 
 /**
- * Superficie multitáctil de alta precisión para emulación de Trackpad USB HID:
- * - 1 dedo: Movimiento de cursor con aceleración suave y acumulación sub-píxel
- * - Tap 1 dedo: Clic izquierdo
- * - Tap 2 dedos: Clic derecho
- * - 2 dedos deslizar: Rueda de scroll vertical suave
- * - Doble tap + mantener/deslizar: Arrastrar objetos (Drag & Drop)
+ * Superficie táctil reactiva estilo cristal pulido (Apple Glassmorphism):
+ * - Canvas limpio sin saturación de texto (la disposición física define la función).
+ * - Halo reactivo de cristal líquido con gradientes suaves y retroalimentación táctil inmediata.
+ * - Soporte para gestos fluidos de 1 y 2 dedos con puente luminoso multi-touch.
  */
 public class TrackpadGestureView extends View {
 
@@ -28,10 +29,11 @@ public class TrackpadGestureView extends View {
 
     private TrackpadListener listener;
 
-    private final Paint gridPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint touchPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint dotGridPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint touchHaloPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint touchCorePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint touchRingPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint hintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint bridgePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private float sensitivity = 1.8f;
     private float scrollSensitivity = 1.0f;
@@ -71,20 +73,22 @@ public class TrackpadGestureView extends View {
     }
 
     private void init() {
-        gridPaint.setColor(0x1894A3B8);
-        gridPaint.setStrokeWidth(1.5f);
-        gridPaint.setStyle(Paint.Style.STROKE);
+        // Puntos de referencia ultra sutiles (micro rejilla de cristal)
+        dotGridPaint.setColor(0x14FFFFFF);
+        dotGridPaint.setStyle(Paint.Style.FILL);
 
-        touchPaint.setColor(0x5506B6D4);
-        touchPaint.setStyle(Paint.Style.FILL);
+        touchHaloPaint.setStyle(Paint.Style.FILL);
 
-        touchRingPaint.setColor(0xFF06B6D4);
-        touchRingPaint.setStrokeWidth(3.5f);
+        touchCorePaint.setColor(0x8038BDF8);
+        touchCorePaint.setStyle(Paint.Style.FILL);
+
         touchRingPaint.setStyle(Paint.Style.STROKE);
+        touchRingPaint.setStrokeWidth(2.5f);
+        touchRingPaint.setColor(0xE638BDF8);
 
-        hintPaint.setColor(0x6694A3B8);
-        hintPaint.setTextSize(30f);
-        hintPaint.setTextAlign(Paint.Align.CENTER);
+        bridgePaint.setColor(0x4038BDF8);
+        bridgePaint.setStyle(Paint.Style.STROKE);
+        bridgePaint.setStrokeWidth(3.0f);
     }
 
     public void setTrackpadListener(TrackpadListener listener) {
@@ -113,31 +117,65 @@ public class TrackpadGestureView extends View {
         int w = getWidth();
         int h = getHeight();
 
-        // Cuadrícula sutil de referencia táctil
-        int step = Math.max(64, Math.min(w, h) / 7);
-        for (int x = step; x < w; x += step) {
-            canvas.drawLine(x, 24, x, h - 24, gridPaint);
-        }
-        for (int y = step; y < h; y += step) {
-            canvas.drawLine(24, y, w - 24, y, gridPaint);
+        // 1. Matriz de micro-puntos estética (Apple Glass dot matrix)
+        float step = 56f;
+        for (float x = step; x < w; x += step) {
+            for (float y = step; y < h; y += step) {
+                canvas.drawCircle(x, y, 1.4f, dotGridPaint);
+            }
         }
 
-        // Indicador central e instrucciones
-        if (!isTouching) {
-            canvas.drawText("ÁREA TÁCTIL MULTITOUCH USB HID", w / 2f, h / 2f - 28f, hintPaint);
-            canvas.drawText("1 dedo: Mover / Tap Clic Izq  |  2 dedos: Scroll / Tap Clic Der", w / 2f, h / 2f + 16f, hintPaint);
-            canvas.drawText("Doble tap + deslizar: Arrastrar (Drag & Drop)", w / 2f, h / 2f + 56f, hintPaint);
-        } else {
-            if (activeTouchX >= 0 && activeTouchY >= 0) {
-                touchRingPaint.setColor(doubleTapDragging ? 0xFF10B981 : 0xFF06B6D4);
-                canvas.drawCircle(activeTouchX, activeTouchY, 44f, touchPaint);
-                canvas.drawCircle(activeTouchX, activeTouchY, 48f, touchRingPaint);
+        // 2. Elementos táctiles reactivos de cristal
+        if (isTouching) {
+            int glowColor = doubleTapDragging ? 0xFF10B981 : 0xFF00E5FF;
+            int ringColor = doubleTapDragging ? 0xFF34D399 : 0xFF38BDF8;
+
+            // Si hay dos dedos activos (gesto de scroll/clic derecho), dibujar enlace luminoso
+            if (activeTouchX >= 0 && secondTouchX >= 0) {
+                bridgePaint.setColor(Color.argb(70, Color.red(ringColor), Color.green(ringColor), Color.blue(ringColor)));
+                canvas.drawLine(activeTouchX, activeTouchY, secondTouchX, secondTouchY, bridgePaint);
             }
+
+            // Primer punto de toque (Dedo principal)
+            if (activeTouchX >= 0 && activeTouchY >= 0) {
+                drawGlassTouchAura(canvas, activeTouchX, activeTouchY, glowColor, ringColor);
+            }
+
+            // Segundo punto de toque
             if (secondTouchX >= 0 && secondTouchY >= 0) {
-                canvas.drawCircle(secondTouchX, secondTouchY, 44f, touchPaint);
-                canvas.drawCircle(secondTouchX, secondTouchY, 48f, touchRingPaint);
+                drawGlassTouchAura(canvas, secondTouchX, secondTouchY, glowColor, ringColor);
             }
         }
+    }
+
+    /**
+     * Dibuja un aura reactiva con profundidad óptica simulando cristal pulido iluminado.
+     */
+    private void drawGlassTouchAura(Canvas canvas, float x, float y, int glowColor, int ringColor) {
+        // Halo exterior con gradiente suave
+        int haloOuter = Color.argb(0, Color.red(glowColor), Color.green(glowColor), Color.blue(glowColor));
+        int haloInner = Color.argb(60, Color.red(glowColor), Color.green(glowColor), Color.blue(glowColor));
+
+        RadialGradient gradient = new RadialGradient(
+                x, y, 64f,
+                new int[]{haloInner, haloOuter},
+                new float[]{0.3f, 1.0f},
+                Shader.TileMode.CLAMP
+        );
+        touchHaloPaint.setShader(gradient);
+        canvas.drawCircle(x, y, 64f, touchHaloPaint);
+
+        // Núcleo translúcido interior
+        touchCorePaint.setColor(Color.argb(85, Color.red(glowColor), Color.green(glowColor), Color.blue(glowColor)));
+        canvas.drawCircle(x, y, 26f, touchCorePaint);
+
+        // Anillo exterior especular
+        touchRingPaint.setColor(ringColor);
+        canvas.drawCircle(x, y, 32f, touchRingPaint);
+
+        // Destello especular central de cristal
+        touchCorePaint.setColor(0xCCFFFFFF);
+        canvas.drawCircle(x, y, 5f, touchCorePaint);
     }
 
     @Override
@@ -181,7 +219,6 @@ public class TrackpadGestureView extends View {
             case MotionEvent.ACTION_POINTER_DOWN: {
                 maxPointersInGesture = Math.max(maxPointersInGesture, pointerCount);
                 if (pointerCount >= 2) {
-                    // Cancelar drag de 1 dedo si se apoya un segundo dedo
                     if (doubleTapDragging) {
                         doubleTapDragging = false;
                         if (listener != null) {
@@ -219,7 +256,7 @@ public class TrackpadGestureView extends View {
                         movedSignificantly = true;
                     }
 
-                    // Curva de aceleración suave proporcional a la velocidad del dedo
+                    // Aceleración de movimiento sub-píxel suave
                     float speed = (float) Math.hypot(rawDx, rawDy);
                     float accel = 1.0f + Math.min(1.6f, speed * 0.045f);
                     float scaledDx = rawDx * sensitivity * accel + remX;

@@ -6,11 +6,20 @@ Aplicación nativa para Android que convierte la pantalla multitáctil de tu tel
 
 El archivo `.apk` listo para instalar se encuentra incluido directamente en el repositorio y en la sección de **Releases**:
 
+- **Última versión:** [`releases/USBTrackpad-v1.0.2.apk`](releases/USBTrackpad-v1.0.2.apk)
+- [`releases/USBTrackpad-v1.0.1.apk`](releases/USBTrackpad-v1.0.1.apk)
 - [`releases/USBTrackpad-v1.0.0.apk`](releases/USBTrackpad-v1.0.0.apk)
 
 ---
 
 ## ✨ Características principales
+
+- **Diseño Cristal Pulido Reactivo (Apple Glassmorphism)**:
+  - **Aprovechamiento 100% de Pantalla**: La superficie multitáctil cubre toda la pantalla del dispositivo de extremo a extremo sin saturación de texto innecesario.
+  - **Botón Flotante de Ajustes**: Acceso a configuración mediante una elegante tarjeta modal esmerilada con animación suave.
+  - **Giro Manual Independiente (0°, 90°, 180°, 270°)**: Botón de orientación en pantalla para rotar manualmente la interfaz sin depender del bloqueo o sensor de rotación del sistema.
+  - **Botones Intuitivos sin Sobrecarga de Texto**: La propia disposición espacial y la iconografía definen la función de cada control.
+  - **Retroalimentación Táctil Suave**: Auras reactivas que siguen los dedos, puente luminoso multitouch y micro-animaciones elásticas en cada pulsación.
 
 - **Superficie Multitáctil de Alta Precisión**:
   - **1 dedo deslizar**: Movimiento suave del cursor con curva de aceleración dinámica y acumulación sub-píxel.

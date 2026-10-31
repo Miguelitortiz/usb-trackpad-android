@@ -1,306 +1,441 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/rootContainer"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_primary"
-    android:orientation="vertical"
-    android:padding="12dp">
+    android:background="@drawable/bg_trackpad_surface">
 
-    <!-- Top Header Bar: Title + Connection Status + Action Buttons -->
+    <!-- 1. Superficie de Trackpad a Pantalla Completa (Full Screen Usable Area) -->
+    <com.usbtrackpad.app.TrackpadGestureView
+        android:id="@+id/trackpadView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 2. Barra Superior Flotante de Cristal Pulido (Micro-controles con mínima huella) -->
     <LinearLayout
+        android:id="@+id/topBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@drawable/bg_status_pill"
+        android:layout_gravity="top"
+        android:layout_margin="14dp"
         android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="10dp">
+        android:orientation="horizontal">
 
-        <View
-            android:id="@+id/statusDot"
-            android:layout_width="12dp"
-            android:layout_height="12dp"
-            android:layout_marginEnd="8dp"
-            android:background="@android:drawable/presence_away" />
-
+        <!-- Píldora de estado reactiva -->
         <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:id="@+id/pillStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:background="@drawable/bg_glass_pill"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="14dp">
 
-            <TextView
-                android:id="@+id/tvTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="USB Trackpad HID"
-                android:textColor="@color/text_primary"
-                android:textSize="16sp"
-                android:textStyle="bold" />
+            <View
+                android:id="@+id/statusDot"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:layout_marginEnd="8dp"
+                android:background="@android:drawable/presence_away" />
 
             <TextView
                 android:id="@+id/tvStatus"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Inicializando..."
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:maxWidth="130dp"
+                android:text="USB"
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
+                android:textSize="12sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
-        <Button
-            android:id="@+id/btnInitUsb"
-            android:layout_width="wrap_content"
-            android:layout_height="38dp"
-            android:layout_marginEnd="6dp"
-            android:backgroundTint="@color/accent_cyan"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:text="Conectar"
-            android:textAllCaps="false"
-            android:textColor="@color/bg_primary"
-            android:textSize="12sp"
-            android:textStyle="bold" />
-
-        <Button
-            android:id="@+id/btnSettings"
-            android:layout_width="wrap_content"
-            android:layout_height="38dp"
-            android:backgroundTint="@color/btn_normal"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:text="Ajustes"
-            android:textAllCaps="false"
-            android:textColor="@color/text_primary"
-            android:textSize="12sp" />
-    </LinearLayout>
-
-    <!-- Mode Selector Spinner + Drag Lock -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <Spinner
-            android:id="@+id/spinnerMode"
+        <View
             android:layout_width="0dp"
-            android:layout_height="40dp"
-            android:layout_weight="1"
-            android:background="@drawable/bg_status_pill"
-            android:paddingHorizontal="8dp"
-            android:popupBackground="@color/bg_surface" />
+            android:layout_height="1dp"
+            android:layout_weight="1" />
 
-        <Button
+        <!-- Botón Rotación Manual (Giro sin depender del sensor del sistema) -->
+        <ImageButton
+            android:id="@+id/btnRotate"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/bg_glass_pill"
+            android:contentDescription="Giro manual"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_screen_rotation"
+            app:tint="@color/text_primary" />
+
+        <!-- Botón Bloqueo de Arrastre (Drag Lock) -->
+        <ImageButton
             android:id="@+id/btnDragLock"
-            android:layout_width="wrap_content"
+            android:layout_width="40dp"
             android:layout_height="40dp"
             android:layout_marginStart="8dp"
-            android:background="@drawable/bg_button_mouse"
-            android:paddingHorizontal="12dp"
-            android:text="@string/btn_drag_lock"
-            android:textAllCaps="false"
-            android:textColor="@color/text_primary"
-            android:textSize="12sp" />
+            android:background="@drawable/bg_glass_toggle_drag"
+            android:contentDescription="Bloquear arrastre"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_drag_lock"
+            app:tint="@color/text_primary" />
+
+        <!-- Botón Pequeño para Abrir Configuraciones -->
+        <ImageButton
+            android:id="@+id/btnSettings"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_glass_pill"
+            android:contentDescription="Configuración"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_settings"
+            app:tint="@color/text_primary" />
     </LinearLayout>
 
-    <!-- ADB Host & Port Row (Visible when USB ADB mode is active) -->
-    <LinearLayout
-        android:id="@+id/rowTcpHost"
-        android:layout_width="match_parent"
+    <!-- Micro Telemetría Discreta -->
+    <TextView
+        android:id="@+id/tvTelemetry"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:background="@drawable/bg_status_pill"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="6dp">
+        android:layout_gravity="bottom|end"
+        android:layout_marginBottom="76dp"
+        android:layout_marginEnd="16dp"
+        android:alpha="0.45"
+        android:fontFamily="monospace"
+        android:text="HID 00"
+        android:textColor="@color/text_secondary"
+        android:textSize="10sp" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:layout_marginEnd="6dp"
-            android:text="Host ADB:"
-            android:textColor="@color/text_secondary"
-            android:textSize="12sp"
-            android:textStyle="bold" />
-
-        <EditText
-            android:id="@+id/etHostAddress"
-            android:layout_width="0dp"
-            android:layout_height="36dp"
-            android:layout_weight="1"
-            android:background="@drawable/bg_trackpad_surface"
-            android:hint="127.0.0.1:5057"
-            android:inputType="textUri"
-            android:paddingHorizontal="10dp"
-            android:text="127.0.0.1:5057"
-            android:textColor="@color/text_primary"
-            android:textColorHint="@color/text_secondary"
-            android:textSize="12sp" />
-
-        <Button
-            android:id="@+id/btnConnectAdb"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:layout_marginStart="6dp"
-            android:backgroundTint="@color/accent_blue"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:text="Reconectar"
-            android:textAllCaps="false"
-            android:textColor="@color/text_primary"
-            android:textSize="12sp" />
-    </LinearLayout>
-
-    <!-- Collapsible Settings Panel -->
+    <!-- 3. Botones Físicos de Ratón Estilo Cristal Pulido (Mínimo de letras, disposición intuitiva) -->
     <LinearLayout
-        android:id="@+id/panelSettings"
+        android:id="@+id/bottomMouseBar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:background="@drawable/bg_status_pill"
-        android:orientation="vertical"
-        android:padding="12dp"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/tvSensitivityLabel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Sensibilidad del cursor: 1.8x"
-            android:textColor="@color/text_primary"
-            android:textSize="13sp" />
-
-        <SeekBar
-            android:id="@+id/seekSensitivity"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="40"
-            android:progress="18" />
-
-        <TextView
-            android:id="@+id/tvScrollLabel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="Velocidad de Scroll (2 dedos): 1.0x"
-            android:textColor="@color/text_primary"
-            android:textSize="13sp" />
-
-        <SeekBar
-            android:id="@+id/seekScroll"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="30"
-            android:progress="10" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <CheckBox
-                android:id="@+id/cbNaturalScroll"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:checked="false"
-                android:text="Scroll natural (invertido)"
-                android:textColor="@color/text_primary"
-                android:textSize="12sp" />
-
-            <CheckBox
-                android:id="@+id/cbTapToClick"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:checked="true"
-                android:text="Tap para clic (1 y 2 dedos)"
-                android:textColor="@color/text_primary"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/btnDiag"
-            android:layout_width="match_parent"
-            android:layout_height="38dp"
-            android:layout_marginTop="6dp"
-            android:backgroundTint="@color/btn_normal"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:text="Diagnóstico USB y Kernel"
-            android:textAllCaps="false"
-            android:textColor="@color/text_primary"
-            android:textSize="12sp" />
-    </LinearLayout>
-
-    <!-- Main Multi-Touch Trackpad Surface -->
-    <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_marginTop="10dp"
-        android:layout_marginBottom="10dp"
-        android:layout_weight="1"
-        android:background="@drawable/bg_trackpad_surface">
-
-        <com.usbtrackpad.app.TrackpadGestureView
-            android:id="@+id/trackpadView"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
-
-        <TextView
-            android:id="@+id/tvTelemetry"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="bottom|end"
-            android:layout_margin="12dp"
-            android:fontFamily="monospace"
-            android:text="HID [00 | 0, 0, 0]"
-            android:textColor="@color/text_secondary"
-            android:textSize="11sp" />
-    </FrameLayout>
-
-    <!-- Physical Left / Middle / Right Mouse Buttons -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="68dp"
+        android:layout_height="58dp"
+        android:layout_gravity="bottom"
+        android:layout_margin="12dp"
         android:orientation="horizontal">
 
-        <Button
+        <!-- Clic Izquierdo Primario -->
+        <ImageButton
             android:id="@+id/btnMouseLeft"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_marginEnd="6dp"
-            android:layout_weight="1.3"
-            android:background="@drawable/bg_button_mouse"
-            android:text="@string/btn_left"
-            android:textColor="@color/text_primary"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+            android:layout_weight="1.2"
+            android:background="@drawable/bg_glass_mouse_button"
+            android:contentDescription="Clic primario"
+            android:padding="12dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_mouse_left" />
 
-        <Button
+        <!-- Clic Central / Rueda -->
+        <ImageButton
             android:id="@+id/btnMouseMiddle"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_marginEnd="6dp"
             android:layout_weight="0.8"
-            android:background="@drawable/bg_button_mouse"
-            android:text="@string/btn_middle"
-            android:textColor="@color/text_secondary"
-            android:textSize="11sp" />
+            android:background="@drawable/bg_glass_mouse_button"
+            android:contentDescription="Clic medio"
+            android:padding="12dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_mouse_middle" />
 
-        <Button
+        <!-- Clic Derecho Secundario -->
+        <ImageButton
             android:id="@+id/btnMouseRight"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_weight="1.3"
-            android:background="@drawable/bg_button_mouse"
-            android:text="@string/btn_right"
-            android:textColor="@color/text_primary"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+            android:layout_weight="1.2"
+            android:background="@drawable/bg_glass_mouse_button"
+            android:contentDescription="Clic secundario"
+            android:padding="12dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_mouse_right" />
     </LinearLayout>
 
-</LinearLayout>
+    <!-- 4. Panel Modal Desplegable de Ajustes (Efecto Cristal Esmerilado Apple) -->
+    <FrameLayout
+        android:id="@+id/scrimSettings"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#99000000"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginVertical="24dp"
+            android:overScrollMode="never">
+
+            <LinearLayout
+                android:id="@+id/panelSettingsCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_glass_modal_card"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <!-- Encabezado de Ajustes: Icono + Título + Cerrar -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:src="@drawable/ic_settings"
+                        app:tint="@color/accent_cyan" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp"
+                        android:layout_weight="1"
+                        android:text="Ajustes"
+                        android:textColor="@color/text_primary"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <ImageButton
+                        android:id="@+id/btnCloseSettings"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:background="@drawable/bg_glass_pill"
+                        android:contentDescription="Cerrar"
+                        android:padding="8dp"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/ic_close"
+                        app:tint="@color/text_secondary" />
+                </LinearLayout>
+
+                <!-- Selector de Modo de Conexión -->
+                <Spinner
+                    android:id="@+id/spinnerMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_marginTop="14dp"
+                    android:background="@drawable/bg_glass_input"
+                    android:paddingHorizontal="10dp"
+                    android:popupBackground="@color/bg_surface" />
+
+                <!-- Fila de Host ADB TCP (Visible en modo ADB) -->
+                <LinearLayout
+                    android:id="@+id/rowTcpHost"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <EditText
+                        android:id="@+id/etHostAddress"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_glass_input"
+                        android:hint="127.0.0.1:5057"
+                        android:inputType="textUri"
+                        android:paddingHorizontal="12dp"
+                        android:text="127.0.0.1:5057"
+                        android:textColor="@color/text_primary"
+                        android:textColorHint="@color/text_muted"
+                        android:textSize="13sp" />
+
+                    <ImageButton
+                        android:id="@+id/btnConnectAdb"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:layout_marginStart="8dp"
+                        android:background="@drawable/bg_glass_pill"
+                        android:contentDescription="Reconectar"
+                        android:padding="8dp"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/ic_refresh"
+                        app:tint="@color/accent_cyan" />
+                </LinearLayout>
+
+                <!-- Separador fino de cristal -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginVertical="14dp"
+                    android:background="@color/glass_border_soft" />
+
+                <!-- Control: Sensibilidad de Cursor -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@drawable/ic_speed"
+                        app:tint="@color/text_secondary" />
+
+                    <TextView
+                        android:id="@+id/tvSensitivityLabel"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:text="1.8x"
+                        android:textColor="@color/text_primary"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <SeekBar
+                    android:id="@+id/seekSensitivity"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:max="40"
+                    android:progress="18"
+                    android:progressTint="@color/accent_cyan"
+                    android:thumbTint="@color/accent_cyan" />
+
+                <!-- Control: Velocidad de Scroll -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@drawable/ic_scroll"
+                        app:tint="@color/text_secondary" />
+
+                    <TextView
+                        android:id="@+id/tvScrollLabel"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:text="1.0x"
+                        android:textColor="@color/text_primary"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <SeekBar
+                    android:id="@+id/seekScroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:max="30"
+                    android:progress="10"
+                    android:progressTint="@color/accent_cyan"
+                    android:thumbTint="@color/accent_cyan" />
+
+                <!-- Opciones Rápidas: Scroll natural & Tap clic -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:id="@+id/rowNaturalScroll"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_marginEnd="6dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_glass_input"
+                        android:gravity="center"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="8dp">
+
+                        <ImageView
+                            android:layout_width="18dp"
+                            android:layout_height="18dp"
+                            android:src="@drawable/ic_reverse"
+                            app:tint="@color/text_secondary" />
+
+                        <CheckBox
+                            android:id="@+id/cbNaturalScroll"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:buttonTint="@color/accent_cyan" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/rowTapToClick"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_marginStart="6dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_glass_input"
+                        android:gravity="center"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="8dp">
+
+                        <ImageView
+                            android:layout_width="18dp"
+                            android:layout_height="18dp"
+                            android:src="@drawable/ic_tap"
+                            app:tint="@color/text_secondary" />
+
+                        <CheckBox
+                            android:id="@+id/cbTapToClick"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:buttonTint="@color/accent_cyan"
+                            android:checked="true" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Botones de Acción de Ajustes: Diagnóstico y Conexión -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:orientation="horizontal">
+
+                    <ImageButton
+                        android:id="@+id/btnInitUsb"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_marginEnd="6dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_glass_pill"
+                        android:contentDescription="Reconectar conexión activa"
+                        android:padding="10dp"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/ic_refresh"
+                        app:tint="@color/accent_cyan" />
+
+                    <ImageButton
+                        android:id="@+id/btnDiag"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_marginStart="6dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_glass_pill"
+                        android:contentDescription="Diagnóstico del sistema"
+                        android:padding="10dp"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/ic_diagnostics"
+                        app:tint="@color/text_primary" />
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+    </FrameLayout>
+
+</FrameLayout>
