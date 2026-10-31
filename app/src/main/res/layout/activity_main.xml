@@ -20,7 +20,7 @@
             android:layout_width="12dp"
             android:layout_height="12dp"
             android:layout_marginEnd="8dp"
-            android:background="@android:drawable/presence_online" />
+            android:background="@android:drawable/presence_away" />
 
         <LinearLayout
             android:layout_width="0dp"
@@ -41,7 +41,7 @@
                 android:id="@+id/tvStatus"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Inicializando salida USB..."
+                android:text="Inicializando..."
                 android:textColor="@color/text_secondary"
                 android:textSize="12sp" />
         </LinearLayout>
@@ -73,7 +73,7 @@
             android:textSize="12sp" />
     </LinearLayout>
 
-    <!-- Mode Selector Spinner + Drag Lock + Packet Counter -->
+    <!-- Mode Selector Spinner + Drag Lock -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -98,6 +98,55 @@
             android:background="@drawable/bg_button_mouse"
             android:paddingHorizontal="12dp"
             android:text="@string/btn_drag_lock"
+            android:textAllCaps="false"
+            android:textColor="@color/text_primary"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- ADB Host & Port Row (Visible when USB ADB mode is active) -->
+    <LinearLayout
+        android:id="@+id/rowTcpHost"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/bg_status_pill"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="6dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:layout_marginEnd="6dp"
+            android:text="Host ADB:"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/etHostAddress"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_trackpad_surface"
+            android:hint="127.0.0.1:5057"
+            android:inputType="textUri"
+            android:paddingHorizontal="10dp"
+            android:text="127.0.0.1:5057"
+            android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_secondary"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnConnectAdb"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginStart="6dp"
+            android:backgroundTint="@color/accent_blue"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:text="Reconectar"
             android:textAllCaps="false"
             android:textColor="@color/text_primary"
             android:textSize="12sp" />
@@ -173,41 +222,18 @@
                 android:textSize="12sp" />
         </LinearLayout>
 
-        <LinearLayout
-            android:id="@+id/rowTcpHost"
+        <Button
+            android:id="@+id/btnDiag"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="38dp"
             android:layout_marginTop="6dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <EditText
-                android:id="@+id/etHostAddress"
-                android:layout_width="0dp"
-                android:layout_height="38dp"
-                android:layout_weight="1"
-                android:background="@drawable/bg_trackpad_surface"
-                android:hint="Host USB ADB / IP (ej. 127.0.0.1:5050)"
-                android:inputType="textUri"
-                android:paddingHorizontal="10dp"
-                android:text="127.0.0.1:5050"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_secondary"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/btnDiag"
-                android:layout_width="wrap_content"
-                android:layout_height="38dp"
-                android:layout_marginStart="8dp"
-                android:backgroundTint="@color/accent_blue"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:text="Diagnóstico USB"
-                android:textAllCaps="false"
-                android:textColor="@color/text_primary"
-                android:textSize="12sp" />
-        </LinearLayout>
+            android:backgroundTint="@color/btn_normal"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:text="Diagnóstico USB y Kernel"
+            android:textAllCaps="false"
+            android:textColor="@color/text_primary"
+            android:textSize="12sp" />
     </LinearLayout>
 
     <!-- Main Multi-Touch Trackpad Surface -->

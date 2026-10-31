@@ -19,11 +19,12 @@ import java.net.Socket;
 import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Gestiona la salida USB sin Root mediante:
  * 1) Android USB Host API (UsbManager) para adaptadores puente OTG-HID (CH9329 / Arduino / Pico HID Bridge).
- * 2) Túnel USB ADB / USB Tethering por socket TCP/UDP de baja latencia (ej. 127.0.0.1:5050 o IP USB RNDIS).
+ * 2) Túnel USB ADB / USB Tethering por socket TCP de baja latencia con auto-reconexión persistente.
  */
 public class UsbHostHidBridgeManager {
 
@@ -32,6 +33,7 @@ public class UsbHostHidBridgeManager {
     private final Context context;
     private final UsbManager usbManager;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService adbWorker = Executors.newSingleThreadExecutor();
 
     private UsbDeviceConnection usbConnection;
     private UsbInterface usbInterface;
@@ -41,6 +43,9 @@ public class UsbHostHidBridgeManager {
     private Socket tcpSocket;
     private OutputStream tcpOutputStream;
     private volatile boolean tcpConnected = false;
+    private final AtomicBoolean adbRunning = new AtomicBoolean(false);
+    private volatile String currentTargetHost = "127.0.0.1";
+    private volatile int currentTargetPort = 5057;
 
     public interface StatusCallback {
         void onStatusChanged(boolean connected, String status);
@@ -110,7 +115,7 @@ public class UsbHostHidBridgeManager {
                             this.usbInterface = intf;
                             this.usbOutEndpoint = ep;
                             this.activeDevice = device;
-                            // Inicializar baudrate 9600 para puentes CH340/CH9329/CP2102 si aplica
+                            // Configurar baudrate 9600 para puentes seriales si aplica
                             conn.controlTransfer(0x40, 0x9A, 0x1312, 0xB282, null, 0, 200);
                             if (currentCallback != null) {
                                 currentCallback.onStatusChanged(true,
@@ -134,8 +139,6 @@ public class UsbHostHidBridgeManager {
         final byte[] ch9329Frame = HidMouseReport.buildCh9329Frame(buttonsMask, dx, dy, wheel);
         ioExecutor.execute(() -> {
             if (usbConnection != null && usbOutEndpoint != null) {
-                // Si la interfaz es clase HID directa, enviamos reporte HID de 4 bytes;
-                // si es puente USB-Serial (ej. CH9329), enviamos trama CH9329
                 if (usbInterface != null && usbInterface.getInterfaceClass() == UsbConstants.USB_CLASS_HID) {
                     usbConnection.bulkTransfer(usbOutEndpoint, rawHid, rawHid.length, 50);
                 } else {
@@ -145,14 +148,66 @@ public class UsbHostHidBridgeManager {
         });
     }
 
-    public void connectUsbAdbSocket(String hostPort, StatusCallback callback) {
+    /**
+     * Inicia un ciclo persistente en segundo plano que intenta conectar y auto-reconectar a USB ADB / TCP.
+     */
+    public void startUsbAdbLoop(String hostPort, StatusCallback callback) {
         this.currentCallback = callback;
-        ioExecutor.execute(() -> {
-            closeTcpSocket();
-            String host = "127.0.0.1";
-            int port = 5050;
-            if (hostPort != null && !hostPort.trim().isEmpty()) {
-                String[] parts = hostPort.trim().split(":");
+        parseHostPort(hostPort);
+
+        adbRunning.set(true);
+        adbWorker.execute(() -> {
+            boolean wasConnected = false;
+            while (adbRunning.get()) {
+                if (!tcpConnected) {
+                    if (currentCallback != null && !wasConnected) {
+                        currentCallback.onStatusChanged(false,
+                                "Buscando receptor en " + currentTargetHost + ":" + currentTargetPort + "...");
+                    }
+                    try {
+                        closeTcpSocket();
+                        Socket s = new Socket();
+                        s.setTcpNoDelay(true);
+                        s.connect(new InetSocketAddress(currentTargetHost, currentTargetPort), 1500);
+                        this.tcpSocket = s;
+                        this.tcpOutputStream = s.getOutputStream();
+                        this.tcpConnected = true;
+                        wasConnected = true;
+                        if (currentCallback != null) {
+                            currentCallback.onStatusChanged(true,
+                                    "Conectado por USB ADB a " + currentTargetHost + ":" + currentTargetPort);
+                        }
+                    } catch (Exception e) {
+                        this.tcpConnected = false;
+                        if (wasConnected && currentCallback != null) {
+                            currentCallback.onStatusChanged(false,
+                                    "Conexión perdida. Reintentando en " + currentTargetHost + ":" + currentTargetPort + "...");
+                            wasConnected = false;
+                        }
+                    }
+                }
+
+                try {
+                    Thread.sleep(tcpConnected ? 1000 : 1500);
+                } catch (InterruptedException ignored) {
+                    break;
+                }
+            }
+        });
+    }
+
+    public void stopUsbAdbLoop() {
+        adbRunning.set(false);
+        closeTcpSocket();
+    }
+
+    private void parseHostPort(String hostPort) {
+        String host = "127.0.0.1";
+        int port = 5057;
+        if (hostPort != null && !hostPort.trim().isEmpty()) {
+            String clean = hostPort.trim();
+            if (clean.contains(":")) {
+                String[] parts = clean.split(":");
                 host = parts[0].trim();
                 if (parts.length > 1) {
                     try {
@@ -160,20 +215,16 @@ public class UsbHostHidBridgeManager {
                     } catch (NumberFormatException ignored) {
                     }
                 }
+            } else {
+                try {
+                    port = Integer.parseInt(clean);
+                } catch (NumberFormatException e) {
+                    host = clean;
+                }
             }
-            try {
-                Socket s = new Socket();
-                s.setTcpNoDelay(true);
-                s.connect(new InetSocketAddress(host, port), 2000);
-                this.tcpSocket = s;
-                this.tcpOutputStream = s.getOutputStream();
-                this.tcpConnected = true;
-                callback.onStatusChanged(true, "Conectado por USB ADB/TCP a " + host + ":" + port);
-            } catch (Exception e) {
-                this.tcpConnected = false;
-                callback.onStatusChanged(false, "Sin conexión en " + host + ":" + port + " (ejecuta adb reverse tcp:5050 tcp:5050)");
-            }
-        });
+        }
+        this.currentTargetHost = host;
+        this.currentTargetPort = port;
     }
 
     public void sendTcpReport(final byte[] report4Bytes) {
@@ -235,6 +286,7 @@ public class UsbHostHidBridgeManager {
     }
 
     public void closeAll() {
+        stopUsbAdbLoop();
         try {
             context.unregisterReceiver(usbReceiver);
         } catch (Exception ignored) {

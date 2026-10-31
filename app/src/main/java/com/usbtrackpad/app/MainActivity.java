@@ -2,6 +2,7 @@ package com.usbtrackpad.app;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -23,22 +24,27 @@ import android.widget.TextView;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
+import java.io.File;
 import java.util.Locale;
 
 /**
  * Actividad principal del emulador de Trackpad USB HID para Android.
  * Soporta salida por USB a cualquier dispositivo receptor mediante:
- * 1) Modo USB HID Gadget Nativo (/dev/hidg0 ConfigFS - Universal Plug & Play sin software externo)
- * 2) Modo USB Host / OTG HID Bridge (CH9329 / HID Host sin Root)
- * 3) Modo USB ADB / Tethering TCP (127.0.0.1:5050 / RNDIS sin Root)
- * 4) Modo Bluetooth HID Nativo (API oficial de Android sin Root)
+ * 1) Modo USB ADB / Socket Local con auto-reconexión persistente (por defecto para teléfonos sin Root).
+ * 2) Modo USB HID Gadget Nativo (/dev/hidg0 ConfigFS - Plug & Play real para teléfonos con Root).
+ * 3) Modo USB Host / OTG HID Bridge (CH9329 / HID Host sin Root).
+ * 4) Modo Bluetooth HID Nativo (API oficial de Android sin Root).
  */
 public class MainActivity extends AppCompatActivity {
 
-    private static final int MODE_USB_GADGET = 0;
-    private static final int MODE_USB_HOST_BRIDGE = 1;
-    private static final int MODE_USB_ADB_SOCKET = 2;
-    private static final int MODE_BLUETOOTH_HID = 3;
+    public static final int MODE_USB_ADB_SOCKET = 0;
+    public static final int MODE_USB_GADGET = 1;
+    public static final int MODE_USB_HOST_BRIDGE = 2;
+    public static final int MODE_BLUETOOTH_HID = 3;
+
+    private static final String PREFS_NAME = "usb_trackpad_prefs";
+    private static final String KEY_MODE = "saved_mode";
+    private static final String KEY_HOST = "saved_host";
 
     private UsbGadgetHidManager usbGadgetManager;
     private UsbHostHidBridgeManager usbHostManager;
@@ -51,9 +57,10 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvScrollLabel;
     private EditText etHostAddress;
     private LinearLayout panelSettings;
+    private LinearLayout rowTcpHost;
     private Button btnDragLock;
 
-    private int activeMode = MODE_USB_GADGET;
+    private int activeMode = MODE_USB_ADB_SOCKET;
     private int currentButtonMask = 0;
     private boolean dragLockEnabled = false;
     private long packetsSent = 0;
@@ -69,8 +76,16 @@ public class MainActivity extends AppCompatActivity {
         usbHostManager = new UsbHostHidBridgeManager(this);
         bluetoothHidManager = new BluetoothHidManager(this);
 
+        determineDefaultMode();
         bindViews();
         initializeActiveTransport();
+    }
+
+    private void determineDefaultMode() {
+        SharedPreferences sp = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        boolean hasRootHid = new File("/dev/hidg0").exists();
+        // Si ya hay preferencia guardada, usarla; si no, usar USB ADB por defecto si no hay Root
+        activeMode = sp.getInt(KEY_MODE, hasRootHid ? MODE_USB_GADGET : MODE_USB_ADB_SOCKET);
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -82,28 +97,40 @@ public class MainActivity extends AppCompatActivity {
         tvScrollLabel = findViewById(R.id.tvScrollLabel);
         etHostAddress = findViewById(R.id.etHostAddress);
         panelSettings = findViewById(R.id.panelSettings);
+        rowTcpHost = findViewById(R.id.rowTcpHost);
         btnDragLock = findViewById(R.id.btnDragLock);
 
+        SharedPreferences sp = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        String savedHost = sp.getString(KEY_HOST, "127.0.0.1:5057");
+        etHostAddress.setText(savedHost);
+
         Button btnInitUsb = findViewById(R.id.btnInitUsb);
+        Button btnConnectAdb = findViewById(R.id.btnConnectAdb);
         Button btnSettings = findViewById(R.id.btnSettings);
         Button btnDiag = findViewById(R.id.btnDiag);
         Spinner spinnerMode = findViewById(R.id.spinnerMode);
         TrackpadGestureView trackpadView = findViewById(R.id.trackpadView);
 
         String[] modes = new String[]{
-                getString(R.string.mode_usb_gadget),
-                getString(R.string.mode_usb_host),
-                getString(R.string.mode_usb_adb),
-                getString(R.string.mode_bt_hid)
+                "1. USB ADB / Cable PC (127.0.0.1:5057)",
+                "2. USB HID Gadget (Kernel / Root /dev/hidg0)",
+                "3. USB OTG Bridge (CH9329 / Host)",
+                "4. Bluetooth HID (Inalámbrico sin Root)"
         };
         ArrayAdapter<String> adapter = new ArrayAdapter<>(
                 this, android.R.layout.simple_spinner_dropdown_item, modes);
         spinnerMode.setAdapter(adapter);
+        spinnerMode.setSelection(activeMode);
         spinnerMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 if (activeMode != position) {
                     activeMode = position;
+                    getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                            .edit()
+                            .putInt(KEY_MODE, activeMode)
+                            .apply();
+                    updateModeUiVisibility();
                     initializeActiveTransport();
                 }
             }
@@ -113,14 +140,17 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        updateModeUiVisibility();
+
         btnInitUsb.setOnClickListener(v -> initializeActiveTransport());
+        btnConnectAdb.setOnClickListener(v -> {
+            saveHostPreference();
+            initializeActiveTransport();
+        });
 
         btnSettings.setOnClickListener(v -> {
-            if (panelSettings.getVisibility() == View.VISIBLE) {
-                panelSettings.setVisibility(View.GONE);
-            } else {
-                panelSettings.setVisibility(View.VISIBLE);
-            }
+            panelSettings.setVisibility(
+                    panelSettings.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
         });
 
         btnDiag.setOnClickListener(v -> showDiagnosticsDialog());
@@ -201,10 +231,23 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // Botones físicos en pantalla (Izquierdo, Central, Derecho)
+        // Botones físicos en pantalla
         setupMouseButton(findViewById(R.id.btnMouseLeft), HidMouseReport.BTN_LEFT, "BTN IZQ");
         setupMouseButton(findViewById(R.id.btnMouseMiddle), HidMouseReport.BTN_MIDDLE, "BTN MED");
         setupMouseButton(findViewById(R.id.btnMouseRight), HidMouseReport.BTN_RIGHT, "BTN DER");
+    }
+
+    private void updateModeUiVisibility() {
+        rowTcpHost.setVisibility(activeMode == MODE_USB_ADB_SOCKET ? View.VISIBLE : View.GONE);
+    }
+
+    private void saveHostPreference() {
+        String host = etHostAddress.getText().toString().trim();
+        if (host.isEmpty()) host = "127.0.0.1:5057";
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .edit()
+                .putString(KEY_HOST, host)
+                .apply();
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -238,16 +281,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void initializeActiveTransport() {
-        updateStatusUi(false, "Conectando modo seleccionado...");
-        if (activeMode == MODE_USB_GADGET) {
+        usbHostManager.stopUsbAdbLoop();
+        updateStatusUi(false, "Iniciando modo seleccionado...");
+
+        if (activeMode == MODE_USB_ADB_SOCKET) {
+            saveHostPreference();
+            String hostPort = etHostAddress.getText().toString();
+            usbHostManager.startUsbAdbLoop(hostPort, (connected, status) ->
+                    mainHandler.post(() -> updateStatusUi(connected, status)));
+        } else if (activeMode == MODE_USB_GADGET) {
             usbGadgetManager.initializeAsync((ready, message) ->
                     mainHandler.post(() -> updateStatusUi(ready, message)));
         } else if (activeMode == MODE_USB_HOST_BRIDGE) {
             usbHostManager.connectUsbHostBridge((connected, status) ->
-                    mainHandler.post(() -> updateStatusUi(connected, status)));
-        } else if (activeMode == MODE_USB_ADB_SOCKET) {
-            String hostPort = etHostAddress.getText().toString();
-            usbHostManager.connectUsbAdbSocket(hostPort, (connected, status) ->
                     mainHandler.post(() -> updateStatusUi(connected, status)));
         } else if (activeMode == MODE_BLUETOOTH_HID) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -275,12 +321,12 @@ public class MainActivity extends AppCompatActivity {
         byte[] report = HidMouseReport.build4ByteReport(currentButtonMask, dx, dy, wheel);
         packetsSent++;
 
-        if (activeMode == MODE_USB_GADGET) {
+        if (activeMode == MODE_USB_ADB_SOCKET) {
+            usbHostManager.sendTcpReport(report);
+        } else if (activeMode == MODE_USB_GADGET) {
             usbGadgetManager.sendReport(report);
         } else if (activeMode == MODE_USB_HOST_BRIDGE) {
             usbHostManager.sendUsbHostReport(currentButtonMask, dx, dy, wheel);
-        } else if (activeMode == MODE_USB_ADB_SOCKET) {
-            usbHostManager.sendTcpReport(report);
         } else if (activeMode == MODE_BLUETOOTH_HID) {
             bluetoothHidManager.sendReport(report);
         }
@@ -298,13 +344,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showDiagnosticsDialog() {
-        String report = usbGadgetManager.buildDiagnosticsReport()
+        String report = "Estado USB ADB: " + (usbHostManager.isTcpConnected() ? "CONECTADO" : "DESCONECTADO")
+                + "\nHost destino: " + etHostAddress.getText().toString()
+                + "\n\n" + usbGadgetManager.buildDiagnosticsReport()
                 + "\nDispositivos USB OTG detectados: " + usbHostManager.getDetectedUsbDeviceCount()
-                + "\nSocket USB ADB conectado: " + usbHostManager.isTcpConnected()
                 + "\nBluetooth HID conectado: " + bluetoothHidManager.isConnected();
 
         new AlertDialog.Builder(this)
-                .setTitle("Diagnóstico de Salida USB HID")
+                .setTitle("Diagnóstico del Sistema")
                 .setMessage(report)
                 .setPositiveButton("Reintentar Conexión", (d, w) -> initializeActiveTransport())
                 .setNegativeButton("Cerrar", null)
