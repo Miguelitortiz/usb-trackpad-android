@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">USB Trackpad HID</string>
+    <string name="mode_usb_gadget">USB HID Gadget (Universal / ConfigFS)</string>
+    <string name="mode_usb_host">USB OTG Bridge (CH9329 / HID Host)</string>
+    <string name="mode_usb_adb">USB ADB / Red Local (Puerto 5050)</string>
+    <string name="mode_bt_hid">Bluetooth HID (Sin Root)</string>
+    <string name="btn_left">CLIC IZQ</string>
+    <string name="btn_middle">SCROLL / MEDIO</string>
+    <string name="btn_right">CLIC DER</string>
+    <string name="btn_drag_lock">ARRASTRAR: OFF</string>
+    <string name="btn_drag_lock_on">ARRASTRAR: ON</string>
+    <string name="btn_init_usb">Activar USB HID</string>
+    <string name="btn_settings">Ajustes</string>
+    <string name="trackpad_hint">1 dedo: Mover / Tap (Clic Izq)\n2 dedos: Scroll / Tap (Clic Der)\nDoble tap + mover: Arrastrar</string>
+</resources>
