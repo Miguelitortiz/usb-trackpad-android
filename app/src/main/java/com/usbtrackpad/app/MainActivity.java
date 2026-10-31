@@ -2,6 +2,7 @@ package com.usbtrackpad.app;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.bluetooth.BluetoothDevice;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
@@ -26,15 +27,14 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Actividad principal del emulador de Trackpad USB HID para Android.
- * Diseño estilo cristal pulido reactivo (Apple Glassmorphism):
- * - Área táctil completa sin bordes ni saturación de texto innecesario.
- * - Botón pequeño para abrir configuraciones en ventana modal de cristal esmerilado.
- * - Giro manual independiente del sensor del sistema (0°, 90°, 180°, 270°).
- * - Disposición intuitiva con mínima cantidad de letras.
+ * Soporta salida por USB ADB Socket, USB HID Gadget (/dev/hidg0), USB OTG Bridge y Bluetooth HID.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -83,7 +83,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Restaurar orientación manual guardada antes de inflar vistas
+        // Restaurar orientación manual guardada
         SharedPreferences sp = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         currentRotationIndex = sp.getInt(KEY_ROTATION, 0);
         if (currentRotationIndex > 0 && currentRotationIndex < ROTATION_MODES.length) {
@@ -134,7 +134,6 @@ public class MainActivity extends AppCompatActivity {
         Spinner spinnerMode = findViewById(R.id.spinnerMode);
         TrackpadGestureView trackpadView = findViewById(R.id.trackpadView);
 
-        // Opciones del selector de modo
         String[] modes = new String[]{
                 "USB ADB (127.0.0.1:5057)",
                 "USB Gadget (/dev/hidg0)",
@@ -166,7 +165,6 @@ public class MainActivity extends AppCompatActivity {
 
         updateModeUiVisibility();
 
-        // Control de Apertura / Cierre modal de Ajustes
         btnSettings.setOnClickListener(v -> {
             v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             openSettings();
@@ -179,25 +177,30 @@ public class MainActivity extends AppCompatActivity {
 
         scrimSettings.setOnClickListener(v -> closeSettings());
         panelSettingsCard.setOnClickListener(v -> {
-            // Evitar que toques dentro del card cierren el modal
         });
 
-        // Giro manual independiente de la autorrotación del sistema
         btnRotate.setOnClickListener(v -> {
             v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             v.animate().rotationBy(90f).setDuration(250).start();
             cycleManualRotation();
         });
 
-        // Reconexión y transporte
         pillStatus.setOnClickListener(v -> {
             v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
-            initializeActiveTransport();
+            if (activeMode == MODE_BLUETOOTH_HID && !bluetoothHidManager.isConnected()) {
+                showBluetoothDevicePicker();
+            } else {
+                initializeActiveTransport();
+            }
         });
 
         btnInitUsb.setOnClickListener(v -> {
             v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
-            initializeActiveTransport();
+            if (activeMode == MODE_BLUETOOTH_HID) {
+                showBluetoothDevicePicker();
+            } else {
+                initializeActiveTransport();
+            }
             closeSettings();
         });
 
@@ -212,7 +215,6 @@ public class MainActivity extends AppCompatActivity {
             showDiagnosticsDialog();
         });
 
-        // Bloqueo de arrastre (Drag Lock)
         btnDragLock.setOnClickListener(v -> {
             dragLockEnabled = !dragLockEnabled;
             btnDragLock.setSelected(dragLockEnabled);
@@ -221,7 +223,6 @@ public class MainActivity extends AppCompatActivity {
             dispatchHidEvent(0, 0, 0, dragLockEnabled ? "DRAG ON" : "DRAG OFF");
         });
 
-        // Sensibilidad del cursor
         SeekBar seekSensitivity = findViewById(R.id.seekSensitivity);
         seekSensitivity.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -240,7 +241,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // Velocidad de scroll
         SeekBar seekScroll = findViewById(R.id.seekScroll);
         seekScroll.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -265,7 +265,6 @@ public class MainActivity extends AppCompatActivity {
         CheckBox cbTapToClick = findViewById(R.id.cbTapToClick);
         cbTapToClick.setOnCheckedChangeListener((btn, checked) -> trackpadView.setTapToClick(checked));
 
-        // Eventos de la superficie táctil multitouch de cristal
         trackpadView.setTrackpadListener(new TrackpadGestureView.TrackpadListener() {
             @Override
             public void onHidAction(int buttonsDeltaOrState, int dx, int dy, int wheel, String gestureLabel) {
@@ -291,7 +290,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // Botones físicos estilo cristal pulido con reacción táctil fluida
         setupMouseButton(findViewById(R.id.btnMouseLeft), HidMouseReport.BTN_LEFT, "BTN IZQ");
         setupMouseButton(findViewById(R.id.btnMouseMiddle), HidMouseReport.BTN_MIDDLE, "BTN MED");
         setupMouseButton(findViewById(R.id.btnMouseRight), HidMouseReport.BTN_RIGHT, "BTN DER");
@@ -392,6 +390,47 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 101 && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            initializeActiveTransport();
+        }
+    }
+
+    private void showBluetoothDevicePicker() {
+        Set<BluetoothDevice> bonded = bluetoothHidManager.getBondedDevices();
+        if (bonded == null || bonded.isEmpty()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Dispositivos Bluetooth")
+                    .setMessage("No hay dispositivos vinculados aún.\n\nVe a los Ajustes de Bluetooth de tu teléfono y vincula tu PC/Laptop primero.")
+                    .setPositiveButton("Aceptar", null)
+                    .show();
+            return;
+        }
+
+        List<BluetoothDevice> deviceList = new ArrayList<>(bonded);
+        String[] names = new String[deviceList.size()];
+        for (int i = 0; i < deviceList.size(); i++) {
+            BluetoothDevice d = deviceList.get(i);
+            String name = d.getName() != null ? d.getName() : d.getAddress();
+            names[i] = name;
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Conectar Ratón Bluetooth a:")
+                .setItems(names, (dialog, which) -> {
+                    BluetoothDevice selected = deviceList.get(which);
+                    updateStatusUi(false, "Conectando...");
+                    boolean started = bluetoothHidManager.connect(selected);
+                    if (!started) {
+                        initializeActiveTransport();
+                    }
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
     private void updateStatusUi(boolean connected, String statusText) {
         tvStatus.setText(statusText);
         statusDot.setBackgroundResource(connected
@@ -424,11 +463,27 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showDiagnosticsDialog() {
-        String report = "Estado USB ADB: " + (usbHostManager.isTcpConnected() ? "CONECTADO" : "DESCONECTADO")
-                + "\nHost destino: " + etHostAddress.getText().toString()
-                + "\n\n" + usbGadgetManager.buildDiagnosticsReport()
-                + "\nDispositivos USB OTG detectados: " + usbHostManager.getDetectedUsbDeviceCount()
-                + "\nBluetooth HID conectado: " + bluetoothHidManager.isConnected();
+        StringBuilder btInfo = new StringBuilder();
+        btInfo.append("Bluetooth Activo: ").append(bluetoothHidManager.isBluetoothEnabled());
+        btInfo.append("\nPerfil HID registrado: ").append(bluetoothHidManager.isAppRegistered());
+        btInfo.append("\nDispositivo Conectado: ").append(bluetoothHidManager.getConnectedDeviceName());
+        Set<BluetoothDevice> bonded = bluetoothHidManager.getBondedDevices();
+        if (bonded != null && !bonded.isEmpty()) {
+            btInfo.append("\nDispositivos vinculados:");
+            for (BluetoothDevice d : bonded) {
+                btInfo.append("\n • ").append(d.getName() != null ? d.getName() : d.getAddress());
+            }
+        }
+
+        String report = "MODO ACTIVO: " + (activeMode == MODE_USB_ADB_SOCKET ? "USB ADB" :
+                activeMode == MODE_USB_GADGET ? "USB HID Gadget" :
+                activeMode == MODE_USB_HOST_BRIDGE ? "USB Host Bridge" : "Bluetooth HID")
+                + "\n\n--- DIAGNÓSTICO BLUETOOTH ---\n" + btInfo
+                + "\n\n--- DIAGNÓSTICO USB ADB ---\n"
+                + "Conectado al Host: " + (usbHostManager.isTcpConnected() ? "SÍ" : "NO")
+                + "\nDirección: " + etHostAddress.getText().toString()
+                + "\n\n--- DIAGNÓSTICO KERNEL /dev/hidg0 ---\n"
+                + usbGadgetManager.buildDiagnosticsReport();
 
         new AlertDialog.Builder(this)
                 .setTitle("Diagnóstico del Sistema")

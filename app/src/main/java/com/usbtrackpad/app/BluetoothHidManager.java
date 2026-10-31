@@ -10,6 +10,8 @@ import android.bluetooth.BluetoothProfile;
 import android.content.Context;
 import android.os.Build;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Executors;
 
@@ -24,6 +26,7 @@ public class BluetoothHidManager {
     private BluetoothAdapter btAdapter;
     private BluetoothHidDevice hidDevice;
     private BluetoothDevice connectedHost;
+    private boolean appRegistered = false;
 
     public interface StatusCallback {
         void onStatusChanged(boolean connected, String status);
@@ -39,6 +42,34 @@ public class BluetoothHidManager {
         }
     }
 
+    public boolean isBluetoothEnabled() {
+        return btAdapter != null && btAdapter.isEnabled();
+    }
+
+    public boolean isAppRegistered() {
+        return appRegistered && hidDevice != null;
+    }
+
+    public String getConnectedDeviceName() {
+        if (connectedHost != null) {
+            String name = connectedHost.getName();
+            return name != null ? name : connectedHost.getAddress();
+        }
+        if (hidDevice != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            List<BluetoothDevice> list = hidDevice.getConnectedDevices();
+            if (list != null && !list.isEmpty()) {
+                BluetoothDevice dev = list.get(0);
+                String name = dev.getName();
+                return name != null ? name : dev.getAddress();
+            }
+        }
+        return "Ninguno";
+    }
+
+    public Set<BluetoothDevice> getBondedDevices() {
+        return btAdapter != null ? btAdapter.getBondedDevices() : Collections.emptySet();
+    }
+
     public void initialize(StatusCallback callback) {
         this.currentCallback = callback;
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
@@ -46,7 +77,7 @@ public class BluetoothHidManager {
             return;
         }
         if (btAdapter == null || !btAdapter.isEnabled()) {
-            callback.onStatusChanged(false, "Activa Bluetooth para usar el modo HID sin Root");
+            callback.onStatusChanged(false, "Activa Bluetooth en tu teléfono");
             return;
         }
 
@@ -64,6 +95,7 @@ public class BluetoothHidManager {
                 if (profile == BluetoothProfile.HID_DEVICE) {
                     hidDevice = null;
                     connectedHost = null;
+                    appRegistered = false;
                     if (currentCallback != null) {
                         currentCallback.onStatusChanged(false, "Servicio Bluetooth HID desconectado");
                     }
@@ -86,24 +118,23 @@ public class BluetoothHidManager {
         hidDevice.registerApp(sdp, null, null, Executors.newSingleThreadExecutor(), new BluetoothHidDevice.Callback() {
             @Override
             public void onAppStatusChanged(BluetoothDevice pluggedDevice, boolean registered) {
+                appRegistered = registered;
                 if (registered) {
+                    // Verificar si ya hay dispositivos conectados al perfil HID
+                    List<BluetoothDevice> connected = hidDevice.getConnectedDevices();
+                    if (connected != null && !connected.isEmpty()) {
+                        connectedHost = connected.get(0);
+                        if (currentCallback != null) {
+                            currentCallback.onStatusChanged(true, "Bluetooth HID conectado a " + getConnectedDeviceName());
+                        }
+                        return;
+                    }
+
                     if (pluggedDevice != null) {
                         hidDevice.connect(pluggedDevice);
-                    } else {
-                        Set<BluetoothDevice> bonded = btAdapter.getBondedDevices();
-                        if (bonded != null && !bonded.isEmpty()) {
-                            BluetoothDevice first = bonded.iterator().next();
-                            hidDevice.connect(first);
-                            if (currentCallback != null) {
-                                currentCallback.onStatusChanged(false,
-                                        "HID registrado. Conectando a " + first.getName() + "...");
-                            }
-                            return;
-                        }
                     }
                     if (currentCallback != null) {
-                        currentCallback.onStatusChanged(false,
-                                "Bluetooth HID listo. Vincúlalo desde el dispositivo receptor.");
+                        currentCallback.onStatusChanged(false, "Bluetooth HID listo. Toca para conectar a tu PC.");
                     }
                 } else if (currentCallback != null) {
                     currentCallback.onStatusChanged(false, "No se pudo registrar Bluetooth HID");
@@ -115,27 +146,53 @@ public class BluetoothHidManager {
                 if (state == BluetoothProfile.STATE_CONNECTED) {
                     connectedHost = device;
                     if (currentCallback != null) {
-                        currentCallback.onStatusChanged(true, "Bluetooth HID conectado a " + device.getName());
+                        String name = device.getName() != null ? device.getName() : device.getAddress();
+                        currentCallback.onStatusChanged(true, "BT HID: " + name);
                     }
                 } else if (state == BluetoothProfile.STATE_DISCONNECTED) {
                     if (connectedHost != null && connectedHost.equals(device)) {
                         connectedHost = null;
                     }
                     if (currentCallback != null) {
-                        currentCallback.onStatusChanged(false, "Bluetooth HID desconectado");
+                        currentCallback.onStatusChanged(false, "BT HID desconectado");
                     }
                 }
             }
         });
     }
 
+    public boolean connect(BluetoothDevice device) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && hidDevice != null && device != null) {
+            connectedHost = device;
+            return hidDevice.connect(device);
+        }
+        return false;
+    }
+
     public boolean isConnected() {
-        return hidDevice != null && connectedHost != null;
+        if (hidDevice == null) return false;
+        if (connectedHost != null) return true;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            List<BluetoothDevice> list = hidDevice.getConnectedDevices();
+            if (list != null && !list.isEmpty()) {
+                connectedHost = list.get(0);
+                return true;
+            }
+        }
+        return false;
     }
 
     public void sendReport(byte[] report4Bytes) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && hidDevice != null && connectedHost != null) {
-            hidDevice.sendReport(connectedHost, 0, report4Bytes);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && hidDevice != null) {
+            if (connectedHost == null) {
+                List<BluetoothDevice> list = hidDevice.getConnectedDevices();
+                if (list != null && !list.isEmpty()) {
+                    connectedHost = list.get(0);
+                }
+            }
+            if (connectedHost != null) {
+                hidDevice.sendReport(connectedHost, 0, report4Bytes);
+            }
         }
     }
 
@@ -148,6 +205,7 @@ public class BluetoothHidManager {
             }
             hidDevice = null;
             connectedHost = null;
+            appRegistered = false;
         }
     }
 }
