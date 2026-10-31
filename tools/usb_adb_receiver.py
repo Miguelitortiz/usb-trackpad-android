@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 Receptor por cable USB (ADB / TCP) para teléfonos Android.
-Permite recibir eventos de movimiento de cursor, clics y scroll desde la app Android.
+Emula movimiento de cursor, clics y scroll en Linux (Wayland y X11) y Windows.
 
 Uso:
     python tools/usb_adb_receiver.py [PUERTO]
-    python tools/usb_adb_receiver.py -p 5057
+    python tools/usb_adb_receiver.py 5057
 """
 
 import argparse
@@ -19,58 +19,91 @@ import sys
 DEFAULT_PORT = 5057
 HOST = "0.0.0.0"
 
-# Intentar soporte de control del ratón nativo si pynput o pyautogui están instalados
-mouse_controller = None
+# 1. Intentar backend uinput nativo de Linux (el único que funciona 100% en Wayland / KDE / GNOME)
+uinput_device = None
+ecodes = None
 try:
-    from pynput.mouse import Button, Controller
-    mouse_controller = Controller()
-except ImportError:
-    pass
+    import evdev
+    from evdev import UInput, ecodes as _ec
+    ecodes = _ec
+    cap = {
+        ecodes.EV_REL: [ecodes.REL_X, ecodes.REL_Y, ecodes.REL_WHEEL],
+        ecodes.EV_KEY: [ecodes.BTN_LEFT, ecodes.BTN_RIGHT, ecodes.BTN_MIDDLE]
+    }
+    uinput_device = UInput(cap, name="USB Trackpad HID Virtual Mouse")
+except Exception as e:
+    uinput_device = None
 
-btn_left_pressed = False
-btn_right_pressed = False
-btn_middle_pressed = False
+# 2. Fallback a pynput para entornos X11 / Windows si uinput no está disponible
+pynput_mouse = None
+Button = None
+if not uinput_device:
+    try:
+        from pynput.mouse import Button as _Btn, Controller
+        pynput_mouse = Controller()
+        Button = _Btn
+    except Exception:
+        pynput_mouse = None
+
+btn_left_state = False
+btn_right_state = False
+btn_middle_state = False
 
 
 def update_system_mouse(buttons, dx, dy, wheel):
-    global mouse_controller, btn_left_pressed, btn_right_pressed, btn_middle_pressed
-    if not mouse_controller:
+    global uinput_device, pynput_mouse, ecodes, Button
+    global btn_left_state, btn_right_state, btn_middle_state
+
+    # Método A: Kernel uinput (Wayland y Linux en general)
+    if uinput_device:
+        if dx != 0:
+            uinput_device.write(ecodes.EV_REL, ecodes.REL_X, dx)
+        if dy != 0:
+            uinput_device.write(ecodes.EV_REL, ecodes.REL_Y, dy)
+        if wheel != 0:
+            uinput_device.write(ecodes.EV_REL, ecodes.REL_WHEEL, wheel)
+
+        left = bool(buttons & 0x01)
+        right = bool(buttons & 0x02)
+        middle = bool(buttons & 0x04)
+
+        if left != btn_left_state:
+            uinput_device.write(ecodes.EV_KEY, ecodes.BTN_LEFT, 1 if left else 0)
+            btn_left_state = left
+        if right != btn_right_state:
+            uinput_device.write(ecodes.EV_KEY, ecodes.BTN_RIGHT, 1 if right else 0)
+            btn_right_state = right
+        if middle != btn_middle_state:
+            uinput_device.write(ecodes.EV_KEY, ecodes.BTN_MIDDLE, 1 if middle else 0)
+            btn_middle_state = middle
+
+        uinput_device.syn()
         return
 
-    # Movimiento relativo del cursor
-    if dx != 0 or dy != 0:
-        mouse_controller.move(dx, dy)
+    # Método B: pynput (X11 / Windows)
+    if pynput_mouse:
+        if dx != 0 or dy != 0:
+            pynput_mouse.move(dx, dy)
+        if wheel != 0:
+            pynput_mouse.scroll(0, wheel)
 
-    # Rueda de scroll vertical
-    if wheel != 0:
-        mouse_controller.scroll(0, wheel)
+        left = bool(buttons & 0x01)
+        if left != btn_left_state:
+            if left: pynput_mouse.press(Button.left)
+            else: pynput_mouse.release(Button.left)
+            btn_left_state = left
 
-    # Botón izquierdo
-    left = bool(buttons & 0x01)
-    if left != btn_left_pressed:
-        if left:
-            mouse_controller.press(Button.left)
-        else:
-            mouse_controller.release(Button.left)
-        btn_left_pressed = left
+        right = bool(buttons & 0x02)
+        if right != btn_right_state:
+            if right: pynput_mouse.press(Button.right)
+            else: pynput_mouse.release(Button.right)
+            btn_right_state = right
 
-    # Botón derecho
-    right = bool(buttons & 0x02)
-    if right != btn_right_pressed:
-        if right:
-            mouse_controller.press(Button.right)
-        else:
-            mouse_controller.release(Button.right)
-        btn_right_pressed = right
-
-    # Botón central
-    middle = bool(buttons & 0x04)
-    if middle != btn_middle_pressed:
-        if middle:
-            mouse_controller.press(Button.middle)
-        else:
-            mouse_controller.release(Button.middle)
-        btn_middle_pressed = middle
+        middle = bool(buttons & 0x04)
+        if middle != btn_middle_state:
+            if middle: pynput_mouse.press(Button.middle)
+            else: pynput_mouse.release(Button.middle)
+            btn_middle_state = middle
 
 
 def get_selected_port():
@@ -83,7 +116,6 @@ def get_selected_port():
     if port is not None:
         return port
 
-    # Si se ejecuta interactivamente en terminal y no se especificó argumento, pedirlo al usuario
     if sys.stdin.isatty():
         try:
             user_input = input(f"Ingresa el puerto a escuchar [Enter para {DEFAULT_PORT}]: ").strip()
@@ -106,30 +138,33 @@ def try_adb_reverse(port):
             )
             if res.returncode == 0:
                 print(f"[✓] Regla adb reverse tcp:{port} tcp:{port} aplicada con éxito.")
-            else:
-                if "device unauthorized" in res.stderr:
-                    print("[!] Teléfono conectado pero pendiente de autorización en pantalla.")
-                elif "no devices" in res.stderr:
-                    print("[i] Ningún teléfono detectado por USB actualmente.")
         except Exception:
             pass
 
 
 def main():
+    global uinput_device, pynput_mouse
     port = get_selected_port()
 
-    print("=" * 60)
+    print("=" * 65)
     print(f"  🖱️  Receptor USB Trackpad HID (TCP Puerto {port})")
-    print("=" * 60)
+    print("=" * 65)
 
     try_adb_reverse(port)
 
-    print(f"\n[*] Escuchando conexiones entrantes en {HOST}:{port}...")
-    print(f"[*] En la app de Android escribe el host: 127.0.0.1:{port}")
-    if mouse_controller:
-        print("[*] Control nativo del cursor activo (pynput detectado).")
+    # Diagnóstico del backend de control del ratón
+    if uinput_device:
+        print("[✓] Control de ratón activo: Dispositivo virtual uinput de Linux (Compatible con Wayland y X11).")
+    elif pynput_mouse:
+        print("[✓] Control de ratón activo: Controlador pynput (X11).")
     else:
-        print("[i] Modo de telemetría activo. (Para controlar el puntero de la PC: pip install pynput)")
+        print("\n[!] AVISO: El cursor no se moverá en Wayland hasta dar permisos a /dev/uinput.")
+        print("    👉 Para habilitar el movimiento del cursor, ejecuta en otra terminal:")
+        print("       sudo chmod 666 /dev/uinput")
+        print("    (Luego reinicia este script para activar el cursor virtual)\n")
+
+    print(f"[*] Escuchando conexiones entrantes en {HOST}:{port}...")
+    print(f"[*] En la app de Android verifica que el Host sea: 127.0.0.1:{port}")
     print("[*] Presiona Ctrl+C para salir.\n")
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
@@ -148,12 +183,12 @@ def main():
             except KeyboardInterrupt:
                 break
 
-            print(f"[+] Dispositivo Android conectado desde {addr}")
+            print(f"\n[+] Dispositivo Android conectado desde {addr}")
             with conn:
                 while True:
                     data = conn.recv(4)
                     if not data or len(data) < 4:
-                        print("[-] Dispositivo desconectado. Esperando nueva conexión...")
+                        print("\n[-] Dispositivo desconectado. Esperando nueva conexión...")
                         break
 
                     buttons, dx, dy, wheel = struct.unpack("Bbbb", data)
