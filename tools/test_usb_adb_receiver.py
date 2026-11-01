@@ -36,6 +36,15 @@ class ReceiverProtocolTest(unittest.TestCase):
             left.close()
             right.close()
 
+    def test_decode_frame_supports_legacy_report(self):
+        left, right = socket.socketpair()
+        try:
+            left.sendall(b"\x01\x0a\xf6\x01")  # button 1, dx 10, dy -10, wheel 1
+            self.assertEqual(decode_frame(right), ("legacy", 1, 10, -10, 1))
+        finally:
+            left.close()
+            right.close()
+
 
 if __name__ == "__main__":
     unittest.main()

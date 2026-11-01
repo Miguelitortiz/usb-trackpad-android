@@ -87,7 +87,7 @@ def decode_frame(conn):
     payload = recv_exact(conn, 3)
     if payload is None:
         return None
-    return ("legacy",) + struct.unpack("bbb", first + payload)
+    return ("legacy",) + decode_report(first + payload)
 
 
 def emit_semantic_action(action, value):
