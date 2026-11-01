@@ -6,7 +6,8 @@ Aplicación nativa para Android que convierte la pantalla multitáctil de tu tel
 
 El archivo `.apk` listo para instalar se encuentra incluido directamente en el repositorio y en la sección de **Releases**:
 
-- **Última versión:** [`releases/USBTrackpad-v1.0.2.apk`](releases/USBTrackpad-v1.0.2.apk)
+- **Última versión:** [`releases/USBTrackpad-v1.0.3.apk`](releases/USBTrackpad-v1.0.3.apk)
+- [`releases/USBTrackpad-v1.0.2.apk`](releases/USBTrackpad-v1.0.2.apk)
 - [`releases/USBTrackpad-v1.0.1.apk`](releases/USBTrackpad-v1.0.1.apk)
 - [`releases/USBTrackpad-v1.0.0.apk`](releases/USBTrackpad-v1.0.0.apk)
 
