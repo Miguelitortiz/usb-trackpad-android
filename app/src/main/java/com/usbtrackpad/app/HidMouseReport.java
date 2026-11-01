@@ -9,6 +9,10 @@ public final class HidMouseReport {
     public static final int BTN_LEFT = 0x01;
     public static final int BTN_RIGHT = 0x02;
     public static final int BTN_MIDDLE = 0x04;
+    public static final int ACTION_ZOOM_IN = 0x01;
+    public static final int ACTION_ZOOM_OUT = 0x02;
+    public static final int ACTION_BACK = 0x03;
+    public static final int ACTION_FORWARD = 0x04;
 
     /**
      * Descriptor USB HID estándar de 52 bytes para Mouse de 3 botones + Rueda de Scroll vertical.
@@ -61,6 +65,21 @@ public final class HidMouseReport {
                 clampDelta(dx),
                 clampDelta(dy),
                 clampDelta(wheel)
+        };
+    }
+
+    /**
+     * Semantic extension frame: [0xFF, action, value high, value low, reserved].
+     * 0xFF cannot be a legacy button byte because only bits 0..2 are valid.
+     */
+    public static byte[] buildSemanticFrame(int action, int value) {
+        int clamped = Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, value));
+        return new byte[]{
+                (byte) 0xFF,
+                (byte) action,
+                (byte) (clamped >> 8),
+                (byte) clamped,
+                0
         };
     }
 

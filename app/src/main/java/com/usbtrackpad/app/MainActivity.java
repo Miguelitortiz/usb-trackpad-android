@@ -272,6 +272,11 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
+            public void onSemanticAction(int action, int value, String gestureLabel) {
+                dispatchSemanticEvent(action, value, gestureLabel);
+            }
+
+            @Override
             public void onTapClick(int buttonMask, String label) {
                 currentButtonMask |= buttonMask;
                 dispatchHidEvent(0, 0, 0, label + " DOWN");
@@ -460,6 +465,13 @@ public class MainActivity extends AppCompatActivity {
                 report[2],
                 report[3]
         ));
+    }
+
+    private void dispatchSemanticEvent(int action, int value, String label) {
+        if (activeMode == MODE_USB_ADB_SOCKET) {
+            usbHostManager.sendTcpSemanticAction(action, value);
+        }
+        tvTelemetry.setText(label);
     }
 
     private void showDiagnosticsDialog() {

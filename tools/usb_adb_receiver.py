@@ -17,7 +17,7 @@ import subprocess
 import sys
 
 DEFAULT_PORT = 5057
-HOST = "0.0.0.0"
+DEFAULT_HOST = "127.0.0.1"
 
 # 1. Intentar backend uinput nativo de Linux (el único que funciona 100% en Wayland / KDE / GNOME)
 uinput_device = None
@@ -28,7 +28,10 @@ try:
     ecodes = _ec
     cap = {
         ecodes.EV_REL: [ecodes.REL_X, ecodes.REL_Y, ecodes.REL_WHEEL],
-        ecodes.EV_KEY: [ecodes.BTN_LEFT, ecodes.BTN_RIGHT, ecodes.BTN_MIDDLE]
+        ecodes.EV_KEY: [
+            ecodes.BTN_LEFT, ecodes.BTN_RIGHT, ecodes.BTN_MIDDLE,
+            ecodes.BTN_BACK, ecodes.BTN_FORWARD, ecodes.KEY_LEFTCTRL
+        ]
     }
     uinput_device = UInput(cap, name="USB Trackpad HID Virtual Mouse")
 except Exception as e:
@@ -37,17 +40,77 @@ except Exception as e:
 # 2. Fallback a pynput para entornos X11 / Windows si uinput no está disponible
 pynput_mouse = None
 Button = None
+keyboard = None
 if not uinput_device:
     try:
         from pynput.mouse import Button as _Btn, Controller
         pynput_mouse = Controller()
         Button = _Btn
+        from pynput.keyboard import Controller as KeyboardController
+        keyboard = KeyboardController()
     except Exception:
         pynput_mouse = None
 
 btn_left_state = False
 btn_right_state = False
 btn_middle_state = False
+
+
+def recv_exact(conn, size):
+    """Read exactly one fixed-size HID report, or return None on disconnect."""
+    data = bytearray()
+    while len(data) < size:
+        chunk = conn.recv(size - len(data))
+        if not chunk:
+            return None
+        data.extend(chunk)
+    return bytes(data)
+
+
+def decode_report(data):
+    if len(data) != 4:
+        raise ValueError(f"expected 4-byte HID report, got {len(data)} bytes")
+    return struct.unpack("Bbbb", data)
+
+
+def decode_frame(conn):
+    first = recv_exact(conn, 1)
+    if first is None:
+        return None
+    if first[0] == 0xFF:
+        payload = recv_exact(conn, 4)
+        if payload is None:
+            return None
+        action = payload[0]
+        value = struct.unpack(">h", payload[1:3])[0]
+        return ("semantic", action, value)
+    payload = recv_exact(conn, 3)
+    if payload is None:
+        return None
+    return ("legacy",) + struct.unpack("bbb", first + payload)
+
+
+def emit_semantic_action(action, value):
+    if uinput_device:
+        if action in (1, 2):
+            uinput_device.write(ecodes.EV_KEY, ecodes.KEY_LEFTCTRL, 1)
+            uinput_device.write(ecodes.EV_REL, ecodes.REL_WHEEL, 1 if action == 1 else -1)
+            uinput_device.write(ecodes.EV_KEY, ecodes.KEY_LEFTCTRL, 0)
+        elif action in (3, 4):
+            button = ecodes.BTN_FORWARD if action == 4 else ecodes.BTN_BACK
+            uinput_device.write(ecodes.EV_KEY, button, 1)
+            uinput_device.write(ecodes.EV_KEY, button, 0)
+        uinput_device.syn()
+    elif pynput_mouse:
+        if action in (1, 2) and keyboard:
+            from pynput.keyboard import Key
+            keyboard.press(Key.ctrl)
+            pynput_mouse.scroll(0, 1 if action == 1 else -1)
+            keyboard.release(Key.ctrl)
+        elif action in (3, 4):
+            button = getattr(Button, "x2" if action == 4 else "x1", None)
+            if button is not None:
+                pynput_mouse.click(button)
 
 
 def update_system_mouse(buttons, dx, dy, wheel):
@@ -126,6 +189,13 @@ def get_selected_port():
     return DEFAULT_PORT
 
 
+def get_selected_host():
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--host", default=DEFAULT_HOST)
+    args, _ = parser.parse_known_args()
+    return args.host
+
+
 def try_adb_reverse(port):
     adb_path = shutil.which("adb") or "/var/home/Moi/Android/Sdk/platform-tools/adb"
     if os.path.exists(adb_path) or shutil.which("adb"):
@@ -145,6 +215,7 @@ def try_adb_reverse(port):
 def main():
     global uinput_device, pynput_mouse
     port = get_selected_port()
+    host = get_selected_host()
 
     print("=" * 65)
     print(f"  🖱️  Receptor USB Trackpad HID (TCP Puerto {port})")
@@ -163,14 +234,14 @@ def main():
         print("       sudo chmod 666 /dev/uinput")
         print("    (Luego reinicia este script para activar el cursor virtual)\n")
 
-    print(f"[*] Escuchando conexiones entrantes en {HOST}:{port}...")
+    print(f"[*] Escuchando conexiones entrantes en {host}:{port}...")
     print(f"[*] En la app de Android verifica que el Host sea: 127.0.0.1:{port}")
     print("[*] Presiona Ctrl+C para salir.\n")
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
         srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            srv.bind((HOST, port))
+            srv.bind((host, port))
         except OSError as e:
             print(f"[!] Error al enlazar el puerto {port}: {e}")
             sys.exit(1)
@@ -186,12 +257,20 @@ def main():
             print(f"\n[+] Dispositivo Android conectado desde {addr}")
             with conn:
                 while True:
-                    data = conn.recv(4)
-                    if not data or len(data) < 4:
+                    frame = decode_frame(conn)
+                    if frame is None:
+                        update_system_mouse(0, 0, 0, 0)
                         print("\n[-] Dispositivo desconectado. Esperando nueva conexión...")
                         break
 
-                    buttons, dx, dy, wheel = struct.unpack("Bbbb", data)
+                    if frame[0] == "semantic":
+                        _, action, value = frame
+                        emit_semantic_action(action, value)
+                        sys.stdout.write(f"\rGESTO -> Acción: {action} | Valor: {value:+d}  ")
+                        sys.stdout.flush()
+                        continue
+
+                    _, buttons, dx, dy, wheel = frame
                     update_system_mouse(buttons, dx, dy, wheel)
 
                     btn_str = []

@@ -31,7 +31,7 @@ El archivo `.apk` listo para instalar se encuentra incluido directamente en el r
 - **4 Modos de Salida USB / HID Integrados**:
   1. **USB HID Gadget (Universal / ConfigFS `/dev/hidg0`)**: Emulación hardware USB HID real a nivel de kernel de Linux/Android. Cualquier dispositivo al que conectes el cable USB detecta el teléfono como un ratón USB físico estándar sin instalar nada en el receptor (*requiere acceso Root / Kernel con ConfigFS HID*).
   2. **USB OTG Bridge (`UsbManager` Host)**: Envía tramas HID a través de adaptadores puente USB OTG (como chips CH9329 o puentes USB-HID hardware) sin requerir Root.
-  3. **USB ADB / Tethering TCP (`127.0.0.1:5050`)**: Canal por cable USB mediante `adb reverse tcp:5050 tcp:5050` o USB Tethering RNDIS para dispositivos sin Root.
+  3. **USB ADB / Tethering TCP (`127.0.0.1:5057`)**: Canal por cable USB mediante `adb reverse tcp:5057 tcp:5057` o USB Tethering RNDIS para dispositivos sin Root.
   4. **Bluetooth HID Nativo (Sin Root)**: Usa la API oficial `BluetoothHidDevice` de Android 9+ para funcionar como Trackpad HID Plug & Play inalámbrico sin instalar software en el receptor.
 
 ---
@@ -43,3 +43,23 @@ El archivo `.apk` listo para instalar se encuentra incluido directamente en el r
 ```
 
 El APK generado se ubicará en `app/build/outputs/apk/release/app-release.apk`.
+
+## Receptor Linux
+
+El receptor conserva el protocolo existente de 4 bytes por reporte:
+`[botones, dx, dy, rueda]`, con los tres últimos valores como enteros con signo de 8 bits.
+También acepta una extensión semántica de 5 bytes para gestos: `0xFF, acción, valor16, reservado`.
+Las acciones 1/2 son zoom in/out y 3/4 son Back/Forward. Los reportes legacy siguen funcionando.
+Por seguridad, escucha en `127.0.0.1:5057` por defecto y funciona con ADB reverse:
+
+```bash
+adb reverse tcp:5057 tcp:5057
+python tools/usb_adb_receiver.py 5057
+```
+
+En Android, pellizcar con dos dedos realiza zoom; deslizar dos dedos horizontalmente realiza
+Back/Forward. El zoom se emite como Ctrl+rueda y la navegación como botones virtuales del ratón.
+
+Para una conexión de USB tethering que requiera una interfaz de red, selecciona explícitamente
+la dirección de escucha, por ejemplo `--host 0.0.0.0 5057`, y limita el acceso mediante el
+cortafuegos del sistema.
