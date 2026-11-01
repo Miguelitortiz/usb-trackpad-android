@@ -235,6 +235,21 @@ public class UsbHostHidBridgeManager {
                     tcpOutputStream.write(report4Bytes);
                     tcpOutputStream.flush();
                 }
+
+                public void sendTcpSemanticAction(int action, int value) {
+                    if (!tcpConnected || tcpOutputStream == null) return;
+                    final byte[] frame = HidMouseReport.buildSemanticFrame(action, value);
+                    ioExecutor.execute(() -> {
+                        try {
+                            if (tcpOutputStream != null) {
+                                tcpOutputStream.write(frame);
+                                tcpOutputStream.flush();
+                            }
+                        } catch (Exception e) {
+                            tcpConnected = false;
+                        }
+                    });
+                }
             } catch (Exception e) {
                 tcpConnected = false;
             }

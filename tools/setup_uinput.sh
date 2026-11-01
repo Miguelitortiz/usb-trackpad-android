@@ -9,7 +9,7 @@ if [ -w /dev/uinput ]; then
     echo "[✓] /dev/uinput ya tiene permisos de escritura."
 else
     echo "[*] Aplicando permisos a /dev/uinput..."
-    echo 'Miguel05' | sudo -S chmod 666 /dev/uinput 2>/dev/null || sudo chmod 666 /dev/uinput
+    sudo chmod 666 /dev/uinput
     echo "[✓] Permisos temporales aplicados correctamente."
 fi
 
@@ -17,9 +17,10 @@ fi
 RULE_PATH="/etc/udev/rules.d/99-uinput.rules"
 if [ ! -f "$RULE_PATH" ]; then
     echo "[*] Instalando regla udev permanente en $RULE_PATH..."
-    echo 'KERNEL=="uinput", MODE="0660", GROUP="input", TAG+="uaccess"' | (echo 'Miguel05' | sudo -S tee "$RULE_PATH" > /dev/null 2>&1 || sudo tee "$RULE_PATH" > /dev/null)
-    (echo 'Miguel05' | sudo -S usermod -aG input "$USER" 2>/dev/null || sudo usermod -aG input "$USER" 2>/dev/null) || true
-    (echo 'Miguel05' | sudo -S udevadm control --reload-rules 2>/dev/null && echo 'Miguel05' | sudo -S udevadm trigger 2>/dev/null) || true
+    echo 'KERNEL=="uinput", MODE="0660", GROUP="input", TAG+="uaccess"' | sudo tee "$RULE_PATH" > /dev/null
+    sudo usermod -aG input "$USER"
+    sudo udevadm control --reload-rules
+    sudo udevadm trigger
     echo "[✓] Regla permanente instalada."
 fi
 

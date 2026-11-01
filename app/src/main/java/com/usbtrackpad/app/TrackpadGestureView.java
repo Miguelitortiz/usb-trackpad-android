@@ -25,6 +25,7 @@ public class TrackpadGestureView extends View {
         void onHidAction(int buttonsDeltaOrState, int dx, int dy, int wheel, String gestureLabel);
         void onTapClick(int buttonMask, String label);
         void onDoubleTapDragChanged(boolean dragging);
+        void onSemanticAction(int action, int value, String gestureLabel);
     }
 
     private TrackpadListener listener;
@@ -49,6 +50,9 @@ public class TrackpadGestureView extends View {
     private float remX = 0f;
     private float remY = 0f;
     private float remScroll = 0f;
+    private float lastPinchDistance = 0f;
+    private float horizontalGestureDistance = 0f;
+    private boolean horizontalGesture = false;
 
     private int maxPointersInGesture = 0;
     private boolean movedSignificantly = false;
@@ -192,6 +196,9 @@ public class TrackpadGestureView extends View {
                 remX = 0f;
                 remY = 0f;
                 remScroll = 0f;
+                lastPinchDistance = 0f;
+                horizontalGestureDistance = 0f;
+                horizontalGesture = false;
 
                 downX = event.getX(0);
                 downY = event.getY(0);
@@ -227,6 +234,9 @@ public class TrackpadGestureView extends View {
                     }
                     lastX = (event.getX(0) + event.getX(1)) * 0.5f;
                     lastY = (event.getY(0) + event.getY(1)) * 0.5f;
+                    lastPinchDistance = distance(event);
+                    horizontalGestureDistance = 0f;
+                    horizontalGesture = false;
                     activeTouchX = event.getX(0);
                     activeTouchY = event.getY(0);
                     secondTouchX = event.getX(1);
@@ -279,21 +289,47 @@ public class TrackpadGestureView extends View {
 
                     float midX = (activeTouchX + secondTouchX) * 0.5f;
                     float midY = (activeTouchY + secondTouchY) * 0.5f;
+                    float rawDx = midX - lastX;
                     float rawDy = midY - lastY;
                     lastX = midX;
                     lastY = midY;
 
-                    if (Math.abs(rawDy) > 6f) {
+                    float pinchDelta = distance(event) - lastPinchDistance;
+                    lastPinchDistance = distance(event);
+                    if (Math.abs(pinchDelta) > 10f && listener != null) {
                         movedSignificantly = true;
+                        listener.onSemanticAction(
+                                pinchDelta > 0
+                                        ? HidMouseReport.ACTION_ZOOM_IN
+                                        : HidMouseReport.ACTION_ZOOM_OUT,
+                                (int) Math.abs(pinchDelta),
+                                pinchDelta > 0 ? "ZOOM IN" : "ZOOM OUT");
                     }
 
-                    float dir = naturalScroll ? 1.0f : -1.0f;
-                    float scaledScroll = (rawDy * 0.14f * scrollSensitivity * dir) + remScroll;
-                    int wheelSteps = (int) scaledScroll;
-                    remScroll = scaledScroll - wheelSteps;
-
-                    if (wheelSteps != 0 && listener != null) {
-                        listener.onHidAction(0, 0, 0, wheelSteps, "SCROLL");
+                    if (!horizontalGesture && Math.abs(rawDx) > Math.abs(rawDy) * 1.35f
+                            && Math.abs(rawDx) > 5f) {
+                        horizontalGesture = true;
+                        movedSignificantly = true;
+                    }
+                    if (horizontalGesture) {
+                        horizontalGestureDistance += rawDx;
+                        if (Math.abs(horizontalGestureDistance) >= 90f && listener != null) {
+                            boolean forward = horizontalGestureDistance < 0;
+                            listener.onSemanticAction(
+                                    forward ? HidMouseReport.ACTION_FORWARD : HidMouseReport.ACTION_BACK,
+                                    (int) Math.abs(horizontalGestureDistance),
+                                    forward ? "FORWARD" : "BACK");
+                            horizontalGestureDistance = 0f;
+                        }
+                    } else if (Math.abs(rawDy) > 6f) {
+                        movedSignificantly = true;
+                        float dir = naturalScroll ? 1.0f : -1.0f;
+                        float scaledScroll = (rawDy * 0.14f * scrollSensitivity * dir) + remScroll;
+                        int wheelSteps = (int) scaledScroll;
+                        remScroll = scaledScroll - wheelSteps;
+                        if (wheelSteps != 0 && listener != null) {
+                            listener.onHidAction(0, 0, 0, wheelSteps, "SCROLL");
+                        }
                     }
                 }
                 invalidate();
@@ -349,5 +385,11 @@ public class TrackpadGestureView extends View {
             }
         }
         return super.onTouchEvent(event);
+    }
+
+    private static float distance(MotionEvent event) {
+        float dx = event.getX(1) - event.getX(0);
+        float dy = event.getY(1) - event.getY(0);
+        return (float) Math.hypot(dx, dy);
     }
 }
